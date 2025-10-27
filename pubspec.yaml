@@ -1,0 +1,29 @@
+name: vib_sns
+description: StreetPass-inspired social app prototype built with Flutter.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.0.5
+  firebase_core: ^2.27.0
+  cloud_firestore: ^4.15.9
+  geolocator: ^11.0.0
+  shared_preferences: ^2.2.2
+  uuid: ^4.3.3
+  flutter_blue_plus: ^1.16.8
+  flutter_ble_peripheral: ^1.2.6
+  permission_handler: ^11.3.0
+  qr_flutter: ^4.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

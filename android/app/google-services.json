@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "115691400203",
+    "project_id": "vib-sns-prod",
+    "storage_bucket": "vib-sns-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:115691400203:android:bc6c68aaf31e54be6eab0e",
+        "android_client_info": {
+          "package_name": "com.example.vib_sns"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9Pf5hWOtKlML0VQJX63pbJ-KH8t7TX6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
