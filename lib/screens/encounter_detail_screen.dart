@@ -32,7 +32,9 @@ class _EncounterDetailScreenState extends State<EncounterDetailScreen> {
         if (encounter == null) {
           return Scaffold(
             appBar: AppBar(),
-            body: const Center(child: Text('\u3053\u306e\u3059\u308c\u9055\u3044\u306f\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f\u3002')),
+            body: const Center(
+                child: Text(
+                    '\u3053\u306e\u3059\u308c\u9055\u3044\u306f\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f\u3002')),
           );
         }
         return Scaffold(
@@ -40,7 +42,8 @@ class _EncounterDetailScreenState extends State<EncounterDetailScreen> {
             title: Text(encounter.profile.displayName),
             actions: [
               IconButton(
-                icon: Icon(encounter.liked ? Icons.favorite : Icons.favorite_border),
+                icon: Icon(
+                    encounter.liked ? Icons.favorite : Icons.favorite_border),
                 onPressed: () => manager.toggleLike(encounter.id),
                 tooltip: '\u3044\u3044\u306d',
               ),
@@ -49,10 +52,14 @@ class _EncounterDetailScreenState extends State<EncounterDetailScreen> {
           body: _EncounterDetailBody(encounter: encounter),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => manager.toggleFollow(encounter.id),
-            label: Text(encounter.profile.following ? '\u30d5\u30a9\u30ed\u30fc\u4e2d' : '\u30d5\u30a9\u30ed\u30fc\u3059\u308b'),
-            icon: Icon(encounter.profile.following ? Icons.check : Icons.person_add),
+            label: Text(encounter.profile.following
+                ? '\u30d5\u30a9\u30ed\u30fc\u4e2d'
+                : '\u30d5\u30a9\u30ed\u30fc\u3059\u308b'),
+            icon: Icon(
+                encounter.profile.following ? Icons.check : Icons.person_add),
           ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          floatingActionButtonLocation:
+              FloatingActionButtonLocation.centerFloat,
         );
       },
     );
@@ -83,13 +90,15 @@ class _EncounterDetailBody extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(profile.displayName, style: theme.textTheme.headlineSmall),
+                      Text(profile.displayName,
+                          style: theme.textTheme.headlineSmall),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(Icons.location_on_outlined, size: 20),
+                          const Icon(Icons.place_outlined, size: 20),
                           const SizedBox(width: 4),
-                          Text(profile.homeTown, style: theme.textTheme.bodyMedium),
+                          Text(profile.homeTown,
+                              style: theme.textTheme.bodyMedium),
                         ],
                       ),
                       if (gpsDistance != null) ...[
@@ -134,19 +143,22 @@ class _EncounterDetailBody extends StatelessWidget {
               child: Text(profile.bio, style: theme.textTheme.bodyLarge),
             ),
             _Section(
-              title: '\u597d\u304d\u306a\u30b2\u30fc\u30e0',
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: profile.favoriteGames
-                    .map(
-                      (game) => Chip(
-                        label: Text(game),
-                        avatar: const Icon(Icons.sports_esports, size: 18),
-                      ),
-                    )
-                    .toList(),
-              ),
+              title: '\u8da3\u5473',
+              child: profile.favoriteGames.isEmpty
+                  ? Text('\u672a\u767b\u9332', style: theme.textTheme.bodyLarge)
+                  : Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: profile.favoriteGames
+                          .map(
+                            (game) => Chip(
+                              label: Text(game),
+                              avatar:
+                                  const Icon(Icons.palette_outlined, size: 18),
+                            ),
+                          )
+                          .toList(),
+                    ),
             ),
             if (encounter.message != null)
               _Section(
@@ -240,14 +252,11 @@ class _StatBadge extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           value.toString(),
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          style:
+              theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
         ),
         Text(label, style: theme.textTheme.bodySmall),
       ],
     );
   }
 }
-
-
-
-

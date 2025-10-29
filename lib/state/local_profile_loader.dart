@@ -20,12 +20,17 @@ class LocalProfileLoader {
     final deviceId = await _ensureDeviceId(prefs);
     final beaconId = await _ensureBeaconId(prefs);
 
-    final displayName = prefs.getString(_displayNameKey) ?? '\u3042\u306a\u305f';
-    final bio = prefs.getString(_bioKey) ?? '\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb\u3092\u7de8\u96c6\u3057\u3066\u81ea\u5df1\u7d39\u4ecb\u3092\u8ffd\u52a0\u3057\u307e\u3057\u3087\u3046\u3002';
-    final homeTown = prefs.getString(_homeTownKey) ?? '\u672a\u8a2d\u5b9a';
-    final favoriteGames = prefs.getStringList(_favoriteGamesKey) ??
-        ['Splatoon 3', 'Mario Kart 8 Deluxe', 'Animal Crossing'];
-    final avatarColorValue = prefs.getInt(_avatarColorKey) ?? _randomAccentColorValue();
+    final displayName =
+        prefs.getString(_displayNameKey) ?? '\u3042\u306a\u305f';
+    final bio = prefs.getString(_bioKey) ?? '\u672a\u767b\u9332';
+    final homeTown = prefs.getString(_homeTownKey) ?? '\u672a\u767b\u9332';
+    final favoriteGames =
+        (prefs.getStringList(_favoriteGamesKey) ?? const <String>[])
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(growable: false);
+    final avatarColorValue =
+        prefs.getInt(_avatarColorKey) ?? _randomAccentColorValue();
 
     return Profile(
       id: deviceId,
@@ -40,7 +45,8 @@ class LocalProfileLoader {
   }
 
   static Future<String> _ensureDeviceId(SharedPreferences prefs) async {
-    final existing = prefs.getString(FirestoreStreetPassService.prefsDeviceIdKey);
+    final existing =
+        prefs.getString(FirestoreStreetPassService.prefsDeviceIdKey);
     if (existing != null && existing.isNotEmpty) {
       return existing;
     }
@@ -77,6 +83,49 @@ class LocalProfileLoader {
     await prefs.setString(_displayNameKey, name.trim());
   }
 
+  static Future<Profile> updateLocalProfile({
+    String? displayName,
+    String? bio,
+    String? homeTown,
+    List<String>? favoriteGames,
+    Color? avatarColor,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    Future<void> writeString(String key, String? value) async {
+      final trimmed = value?.trim() ?? '';
+      if (trimmed.isEmpty) {
+        await prefs.remove(key);
+      } else {
+        await prefs.setString(key, trimmed);
+      }
+    }
+
+    if (displayName != null) {
+      await writeString(_displayNameKey, displayName);
+    }
+    if (bio != null) {
+      await writeString(_bioKey, bio);
+    }
+    if (homeTown != null) {
+      await writeString(_homeTownKey, homeTown);
+    }
+    if (favoriteGames != null) {
+      final sanitized = favoriteGames
+          .map((game) => game.trim())
+          .where((game) => game.isNotEmpty)
+          .toList(growable: false);
+      if (sanitized.isEmpty) {
+        await prefs.remove(_favoriteGamesKey);
+      } else {
+        await prefs.setStringList(_favoriteGamesKey, sanitized);
+      }
+    }
+    if (avatarColor != null) {
+      await prefs.setInt(_avatarColorKey, avatarColor.toARGB32());
+    }
+    return loadOrCreate();
+  }
+
   static Future<bool> hasDisplayName() async {
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString(_displayNameKey);
@@ -84,7 +133,15 @@ class LocalProfileLoader {
   }
 
   static Future<void> resetDisplayName() async {
+    await resetLocalProfile();
+  }
+
+  static Future<void> resetLocalProfile() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_displayNameKey);
+    await prefs.remove(_bioKey);
+    await prefs.remove(_homeTownKey);
+    await prefs.remove(_favoriteGamesKey);
+    await prefs.remove(_avatarColorKey);
   }
 }

@@ -31,6 +31,32 @@ class Profile {
     receivedLikes++;
   }
 
+  Profile copyWith({
+    String? id,
+    String? beaconId,
+    String? displayName,
+    String? bio,
+    String? homeTown,
+    List<String>? favoriteGames,
+    Color? avatarColor,
+    bool? following,
+    int? receivedLikes,
+  }) {
+    return Profile(
+      id: id ?? this.id,
+      beaconId: beaconId ?? this.beaconId,
+      displayName: displayName ?? this.displayName,
+      bio: bio ?? this.bio,
+      homeTown: homeTown ?? this.homeTown,
+      favoriteGames: favoriteGames != null
+          ? List<String>.from(favoriteGames)
+          : List<String>.from(this.favoriteGames),
+      avatarColor: avatarColor ?? this.avatarColor,
+      following: following ?? this.following,
+      receivedLikes: receivedLikes ?? this.receivedLikes,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -59,7 +85,8 @@ class Profile {
         bio: map['bio']?.toString() ?? '',
         homeTown: map['homeTown']?.toString() ?? '',
         favoriteGames: favoriteGames,
-        avatarColor: Color((map['avatarColor'] as num?)?.toInt() ?? Colors.blueAccent.toARGB32()),
+        avatarColor: Color((map['avatarColor'] as num?)?.toInt() ??
+            Colors.blueAccent.toARGB32()),
         following: map['following'] as bool? ?? false,
         receivedLikes: (map['receivedLikes'] as num?)?.toInt() ?? 0,
       );

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +9,7 @@ import '../services/streetpass_service.dart';
 import '../state/encounter_manager.dart';
 import '../state/local_profile_loader.dart';
 import '../state/profile_controller.dart';
+import 'profile_edit_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -82,12 +82,14 @@ class _HomeShellState extends State<HomeShell> {
       _showStreetPassSnack(error.message);
     } catch (_) {
       if (!mounted) return;
-      _showStreetPassSnack('\u3059\u308c\u9055\u3044\u901a\u4fe1\u306e\u8d77\u52d5\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u8a2d\u5b9a\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
+      _showStreetPassSnack(
+          '\u3059\u308c\u9055\u3044\u901a\u4fe1\u306e\u8d77\u52d5\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u8a2d\u5b9a\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
     }
   }
 
   void _showStreetPassSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -118,7 +120,8 @@ class _TimelineScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('\u30a4\u30f3\u30b9\u30d4\u30ec\u30fc\u30b7\u30e7\u30f3 #${index + 1}',
+                Text(
+                    '\u30a4\u30f3\u30b9\u30d4\u30ec\u30fc\u30b7\u30e7\u30f3 #${index + 1}',
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Text(
@@ -190,7 +193,7 @@ class _ProfileScreenState extends State<_ProfileScreen> {
     final manager = context.read<EncounterManager>();
     try {
       await _resetWithTimeout(manager);
-      await LocalProfileLoader.resetDisplayName();
+      await LocalProfileLoader.resetLocalProfile();
       final refreshed = await LocalProfileLoader.loadOrCreate();
       controller.updateProfile(refreshed, needsSetup: true);
     } finally {
@@ -214,13 +217,33 @@ class _ProfileScreenState extends State<_ProfileScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final profile = context.watch<ProfileController>().profile;
+    final bio = _displayOrPlaceholder(profile.bio);
+    final homeTown = _displayOrPlaceholder(profile.homeTown);
+    final hobbies = _hobbiesOrPlaceholder(profile.favoriteGames);
     return Scaffold(
       appBar: AppBar(
         title: const Text('\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb'),
         actions: [
           IconButton(
             tooltip: '\u7de8\u96c6',
-            onPressed: () {},
+            onPressed: () async {
+              final controller = context.read<ProfileController>();
+              final messenger = ScaffoldMessenger.of(context);
+              final result = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      ProfileEditScreen(profile: controller.profile),
+                ),
+              );
+              if (!mounted) return;
+              if (result == true) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                      content: Text(
+                          '\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb\u3092\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002')),
+                );
+              }
+            },
             icon: const Icon(Icons.edit_outlined),
           ),
         ],
@@ -258,15 +281,23 @@ class _ProfileScreenState extends State<_ProfileScreen> {
               ],
             ),
             const SizedBox(height: 28),
-            Text('\u30b9\u30c6\u30fc\u30bf\u30b9', style: theme.textTheme.titleMedium),
+            Text('\u30b9\u30c6\u30fc\u30bf\u30b9',
+                style: theme.textTheme.titleMedium),
             const SizedBox(height: 10),
-            const _ProfilePill(
+            _ProfileInfoTile(
               icon: Icons.mood,
-              text: '\u307e\u3063\u305f\u308a\u904a\u3073\u76f8\u624b\u3092\u52df\u96c6\u4e2d',
+              title: '\u4e00\u8a00\u30b3\u30e1\u30f3\u30c8',
+              value: bio,
             ),
-            const _ProfilePill(
-              icon: Icons.sports_esports,
-              text: '\u304a\u6c17\u306b\u5165\u308a: cozy \u306a\u30a4\u30f3\u30c7\u30a3\u30fc\u30b2\u30fc\u30e0',
+            _ProfileInfoTile(
+              icon: Icons.place_outlined,
+              title: '\u6d3b\u52d5\u30a8\u30ea\u30a2',
+              value: homeTown,
+            ),
+            _ProfileInfoTile(
+              icon: Icons.palette_outlined,
+              title: '\u8da3\u5473',
+              value: hobbies,
             ),
             const Spacer(),
             FilledButton.tonalIcon(
@@ -287,14 +318,17 @@ class _ProfileScreenState extends State<_ProfileScreen> {
   }
 }
 
-class _ProfilePill extends StatelessWidget {
-  const _ProfilePill({required this.icon, required this.text});
+class _ProfileInfoTile extends StatelessWidget {
+  const _ProfileInfoTile(
+      {required this.icon, required this.title, required this.value});
 
   final IconData icon;
-  final String text;
+  final String title;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -308,13 +342,39 @@ class _ProfilePill extends StatelessWidget {
           Icon(icon, color: Colors.black87),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context).textTheme.bodyMedium,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
+
+String _displayOrPlaceholder(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty || trimmed == '\u672a\u767b\u9332') {
+    return '\u672a\u767b\u9332';
+  }
+  return trimmed;
+}
+
+String _hobbiesOrPlaceholder(List<String> hobbies) {
+  if (hobbies.isEmpty) {
+    return '\u672a\u767b\u9332';
+  }
+  return hobbies.join(', ');
 }

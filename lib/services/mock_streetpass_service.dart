@@ -11,7 +11,8 @@ class MockStreetPassService implements StreetPassService {
   MockStreetPassService({this.seed});
 
   final int? seed;
-  final StreamController<StreetPassEncounterData> _controller = StreamController.broadcast();
+  final StreamController<StreetPassEncounterData> _controller =
+      StreamController.broadcast();
   Timer? _timer;
   bool _started = false;
 
@@ -36,9 +37,12 @@ class MockStreetPassService implements StreetPassService {
           remoteId: profile.id,
           profile: profile,
           beaconId: profile.beaconId,
-          encounteredAt: DateTime.now().subtract(Duration(minutes: rnd.nextInt(120))),
+          encounteredAt:
+              DateTime.now().subtract(Duration(minutes: rnd.nextInt(120))),
           gpsDistanceMeters: rnd.nextDouble() * 90 + 10,
-          message: rnd.nextBool() ? '\u4eca\u5ea6\u4e00\u7dd2\u306b\u904a\u3073\u307e\u3057\u3087\u3046\uff01' : null,
+          message: rnd.nextBool()
+              ? '\u4eca\u5ea6\u4e00\u7dd2\u306b\u904a\u3073\u307e\u3057\u3087\u3046\uff01'
+              : null,
         ),
       );
     });
@@ -80,13 +84,37 @@ class MockStreetPassService implements StreetPassService {
       '\u4ed9\u53f0',
       '\u672d\u5e4c',
     ];
-    final games = [
-      ['Splatoon 3', 'Stardew Valley', 'Celeste'],
-      ['Hollow Knight', 'Dead Cells', 'Super Metroid'],
-      ['Monster Hunter Rise', 'ARMS', 'Beat Saber'],
-      ['Taiko no Tatsujin', 'Rhythm Heaven', 'Muse Dash'],
-      ['Steins;Gate', 'AI: The Somnium Files', '999'],
-      ['Catan', 'Mario Kart 8', 'Among Us'],
+    final hobbies = [
+      [
+        '\u30ab\u30d5\u30a7\u5de1\u308a',
+        '\u30ab\u30e1\u30e9\u5199\u771f',
+        '\u5916\u56f3\u9451\u8cde'
+      ],
+      [
+        '\u62f3\u9053\u30a8\u30af\u30b5\u30b5\u30a4\u30ba',
+        '\u30d4\u30a2\u30ce\u30bd\u30ed',
+        '\u30e8\u30ac\u845b\u98df'
+      ],
+      [
+        '\u9593\u53e3\u30ec\u30b7\u30d4\u63a2\u3057',
+        '\u30cf\u30a4\u30ad\u30f3\u30b0',
+        '\u30b2\u30fc\u30e0\u4f1a\u8a08\u753b'
+      ],
+      [
+        '\u30b0\u30ed\u30fc\u30b5\u30af\u30b9\u65c5\u884c\u8a08\u753b',
+        '\u6f14\u5287\u9451\u8cde',
+        '\u30e8\u30ac\u30af\u30ec\u30d5\u30c8'
+      ],
+      [
+        '\u4e16\u754c\u907a\u7523\u30d0\u30fc\u30c1\u30e3\u30eb\u63a2\u8a2a',
+        '\u8a00\u8a9e\u5b66\u7fd2',
+        '\u30da\u30a4\u30f3\u30c8\u30ec\u30b9'
+      ],
+      [
+        '\u697d\u5668\u30bb\u30c3\u30b7\u30e7\u30f3',
+        '\u304a\u6bcd\u3055\u3093\u30ac\u30fc\u30c7\u30cb\u30f3\u30b0',
+        '\u8f2a\u821f\u30ec\u30fc\u30b9'
+      ],
     ];
 
     const uuid = Uuid();
@@ -97,7 +125,7 @@ class MockStreetPassService implements StreetPassService {
         displayName: 'Mock Player ${String.fromCharCode(65 + i)}',
         bio: bios[i],
         homeTown: towns[i],
-        favoriteGames: games[i],
+        favoriteGames: hobbies[i],
         avatarColor: Color(colors[i % colors.length]),
         receivedLikes: 10 + i * 3,
       );
