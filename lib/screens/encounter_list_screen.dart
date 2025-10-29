@@ -6,6 +6,7 @@ import '../services/streetpass_service.dart';
 import '../state/encounter_manager.dart';
 import '../state/runtime_config.dart';
 import '../widgets/encounter_map.dart';
+import '../widgets/like_button.dart';
 import '../widgets/profile_avatar.dart';
 import 'encounter_detail_screen.dart';
 
@@ -287,34 +288,53 @@ class _EncounterTile extends StatelessWidget {
                         ),
                       ),
                     const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        _StatusChip(
-                          icon: encounter.liked
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          label: encounter.liked ? 'いいね済み' : 'いいね',
-                          highlight: encounter.liked,
-                        ),
-                        _StatusChip(
-                          icon: encounter.profile.following
-                              ? Icons.check
-                              : Icons.person_add_alt,
-                          label: encounter.profile.following ? 'フォロー中' : 'フォロー',
-                          highlight: encounter.profile.following,
-                        ),
-                        _StatusChip(
-                          icon: encounter.proximityVerified
-                              ? Icons.bluetooth_connected
-                              : Icons.bluetooth_searching,
-                          label: encounter.proximityVerified
-                              ? 'BLE検知済み'
-                              : 'BLE確認中',
-                          highlight: encounter.proximityVerified,
-                        ),
-                      ],
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final double availableWidth = constraints.maxWidth;
+                        final double rawWidth = (availableWidth - 10) / 2;
+                        final double buttonWidth =
+                            rawWidth.isFinite && rawWidth > 0
+                                ? rawWidth
+                                : availableWidth / 2;
+                        return Row(
+                          children: [
+                            SizedBox(
+                              width: buttonWidth,
+                              child: FittedBox(
+                                alignment: Alignment.centerLeft,
+                                fit: BoxFit.scaleDown,
+                                child: LikeButton(
+                                  variant: LikeButtonVariant.chip,
+                                  isLiked: encounter.liked,
+                                  likeCount: encounter.profile.receivedLikes,
+                                  onPressed: () {
+                                    context
+                                        .read<EncounterManager>()
+                                        .toggleLike(encounter.id);
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: buttonWidth,
+                              child: FittedBox(
+                                alignment: Alignment.centerRight,
+                                fit: BoxFit.scaleDown,
+                                child: FollowButton(
+                                  variant: LikeButtonVariant.chip,
+                                  isFollowing: encounter.profile.following,
+                                  onPressed: () {
+                                    context
+                                        .read<EncounterManager>()
+                                        .toggleFollow(encounter.id);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -332,50 +352,6 @@ class _EncounterTile extends StatelessWidget {
     if (diff.inHours < 1) return '${diff.inMinutes}\u5206\u524d';
     if (diff.inHours < 24) return '${diff.inHours}\u6642\u9593\u524d';
     return '${diff.inDays}\u65e5\u524d';
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({
-    required this.icon,
-    required this.label,
-    this.highlight = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: highlight ? accent.withValues(alpha: 0.15) : Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: highlight
-              ? accent.withValues(alpha: 0.7)
-              : Colors.black.withValues(alpha: 0.08),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: highlight ? accent : Colors.black87),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: highlight ? accent : Colors.black87,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 

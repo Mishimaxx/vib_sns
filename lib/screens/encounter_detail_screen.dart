@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/encounter.dart';
 import '../state/encounter_manager.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/like_button.dart';
 
 class EncounterDetailScreen extends StatefulWidget {
   const EncounterDetailScreen({super.key, required this.encounterId});
@@ -44,22 +45,17 @@ class _EncounterDetailScreenState extends State<EncounterDetailScreen> {
               IconButton(
                 icon: Icon(
                     encounter.liked ? Icons.favorite : Icons.favorite_border),
+                color: encounter.liked ? Colors.pinkAccent : null,
                 onPressed: () => manager.toggleLike(encounter.id),
                 tooltip: '\u3044\u3044\u306d',
               ),
             ],
           ),
-          body: _EncounterDetailBody(encounter: encounter),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => manager.toggleFollow(encounter.id),
-            label: Text(encounter.profile.following
-                ? '\u30d5\u30a9\u30ed\u30fc\u4e2d'
-                : '\u30d5\u30a9\u30ed\u30fc\u3059\u308b'),
-            icon: Icon(
-                encounter.profile.following ? Icons.check : Icons.person_add),
+          body: _EncounterDetailBody(
+            encounter: encounter,
+            onLikePressed: () => manager.toggleLike(encounter.id),
+            onFollowPressed: () => manager.toggleFollow(encounter.id),
           ),
-          floatingActionButtonLocation:
-              FloatingActionButtonLocation.centerFloat,
         );
       },
     );
@@ -67,9 +63,15 @@ class _EncounterDetailScreenState extends State<EncounterDetailScreen> {
 }
 
 class _EncounterDetailBody extends StatelessWidget {
-  const _EncounterDetailBody({required this.encounter});
+  const _EncounterDetailBody({
+    required this.encounter,
+    required this.onLikePressed,
+    required this.onFollowPressed,
+  });
 
   final Encounter encounter;
+  final VoidCallback onLikePressed;
+  final VoidCallback onFollowPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -192,6 +194,50 @@ class _EncounterDetailBody extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final double width = constraints.maxWidth;
+                final bool compact = width < 360;
+                final double maxHeight = compact ? 58 : 68;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: maxHeight,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: LikeButton(
+                            variant: LikeButtonVariant.hero,
+                            isLiked: encounter.liked,
+                            likeCount: encounter.profile.receivedLikes,
+                            onPressed: onLikePressed,
+                            maxHeight: maxHeight,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: SizedBox(
+                        height: maxHeight,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: FollowButton(
+                            variant: LikeButtonVariant.hero,
+                            isFollowing: encounter.profile.following,
+                            onPressed: onFollowPressed,
+                            maxHeight: maxHeight,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),
