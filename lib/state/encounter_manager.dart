@@ -49,7 +49,8 @@ class EncounterManager extends ChangeNotifier {
       _subscription = _streetPassService.encounterStream.listen(
         _handleEncounter,
         onError: (error, stackTrace) {
-          _errorMessage = error is StreetPassException ? error.message : error.toString();
+          _errorMessage =
+              error is StreetPassException ? error.message : error.toString();
           notifyListeners();
         },
       );
@@ -69,7 +70,8 @@ class EncounterManager extends ChangeNotifier {
         );
       }
     } catch (error) {
-      _errorMessage = error is StreetPassException ? error.message : error.toString();
+      _errorMessage =
+          error is StreetPassException ? error.message : error.toString();
       notifyListeners();
       rethrow;
     }
@@ -83,6 +85,12 @@ class EncounterManager extends ChangeNotifier {
       existing.message = data.message ?? existing.message;
       existing.unread = true;
       existing.profile.receivedLikes = data.profile.receivedLikes;
+      if (data.latitude != null) {
+        existing.latitude = data.latitude;
+      }
+      if (data.longitude != null) {
+        existing.longitude = data.longitude;
+      }
     } else {
       _encountersByRemoteId[data.remoteId] = Encounter(
         id: 'encounter_${data.remoteId}',
@@ -91,6 +99,8 @@ class EncounterManager extends ChangeNotifier {
         beaconId: data.beaconId,
         message: data.message,
         gpsDistanceMeters: data.gpsDistanceMeters,
+        latitude: data.latitude,
+        longitude: data.longitude,
       );
     }
     if (_targetBeaconIds.add(data.beaconId)) {
@@ -141,7 +151,8 @@ class EncounterManager extends ChangeNotifier {
     if (encounter.liked) {
       encounter.profile.like();
     } else {
-      encounter.profile.receivedLikes = (encounter.profile.receivedLikes - 1).clamp(0, 999);
+      encounter.profile.receivedLikes =
+          (encounter.profile.receivedLikes - 1).clamp(0, 999);
     }
     notifyListeners();
   }
@@ -190,9 +201,11 @@ class EncounterManager extends ChangeNotifier {
     try {
       await reset().timeout(const Duration(seconds: 5));
     } on TimeoutException {
-      debugPrint('Encounter reset timed out while switching profile; continuing.');
+      debugPrint(
+          'Encounter reset timed out while switching profile; continuing.');
     } catch (error, stackTrace) {
-      debugPrint('Failed to reset before switching profile: $error\n$stackTrace');
+      debugPrint(
+          'Failed to reset before switching profile: $error\n$stackTrace');
     } finally {
       _localProfile = profile;
     }

@@ -90,7 +90,8 @@ class VibSnsApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider<ProfileController>.value(value: profileController),
+        ChangeNotifierProvider<ProfileController>.value(
+            value: profileController),
         Provider<StreetPassRuntimeConfig>.value(value: runtimeConfig),
         ChangeNotifierProvider(
           create: (_) => EncounterManager(
@@ -114,7 +115,8 @@ class VibSnsApp extends StatelessWidget {
     const accent = Color(0xFFFFC400);
     final base = ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: accent, brightness: Brightness.light),
+      colorScheme:
+          ColorScheme.fromSeed(seedColor: accent, brightness: Brightness.light),
     );
     return base.copyWith(
       scaffoldBackgroundColor: Colors.white,

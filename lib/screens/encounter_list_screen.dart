@@ -5,6 +5,7 @@ import '../models/encounter.dart';
 import '../services/streetpass_service.dart';
 import '../state/encounter_manager.dart';
 import '../state/runtime_config.dart';
+import '../widgets/encounter_map.dart';
 import '../widgets/profile_avatar.dart';
 import 'encounter_detail_screen.dart';
 
@@ -45,7 +46,8 @@ class _EncounterListScreenState extends State<EncounterListScreen> {
       if (mounted) {
         setState(() => _scanAttempted = true);
       }
-      _showSnack('\u3059\u308c\u9055\u3044\u901a\u4fe1\u3092\u958b\u59cb\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u8a2d\u5b9a\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
+      _showSnack(
+          '\u3059\u308c\u9055\u3044\u901a\u4fe1\u3092\u958b\u59cb\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u8a2d\u5b9a\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
     }
   }
 
@@ -55,79 +57,134 @@ class _EncounterListScreenState extends State<EncounterListScreen> {
     try {
       await manager.reset();
       await manager.start();
-      _showSnack('\u8fd1\u304f\u306e\u30d7\u30ec\u30a4\u30e4\u30fc\u3092\u30b9\u30ad\u30e3\u30f3\u3057\u3066\u3044\u307e\u3059...');
+      _showSnack(
+          '\u8fd1\u304f\u306e\u30d7\u30ec\u30a4\u30e4\u30fc\u3092\u30b9\u30ad\u30e3\u30f3\u3057\u3066\u3044\u307e\u3059...');
     } on StreetPassException catch (error) {
       _showSnack(error.message);
     } catch (_) {
-      _showSnack('\u901a\u4fe1\u306e\u521d\u671f\u5316\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002');
+      _showSnack(
+          '\u901a\u4fe1\u306e\u521d\u671f\u5316\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002');
     }
   }
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     final runtimeConfig = context.watch<StreetPassRuntimeConfig>();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('\u3059\u308c\u9055\u3044\u30ed\u30b0'),
-        actions: [
-          IconButton(
-            onPressed: _handleScanPressed,
-            icon: const Icon(Icons.wifi_tethering),
-            tooltip: '\u3059\u308c\u9055\u3044\u691c\u7d22',
-          ),
-        ],
-      ),
-      body: Consumer<EncounterManager>(
-        builder: (context, manager, _) {
-          if (manager.errorMessage != null) {
-            return _ErrorMessage(message: manager.errorMessage!);
-          }
-          if (!manager.isRunning) {
-            return _LoadingMessage(
-              attempted: _scanAttempted,
-              onRetry: _handleScanPressed,
-            );
-          }
-
-          final encounters = manager.encounters;
-          return Column(
-            children: [
-              if (runtimeConfig.usesMockService)
-                const _BannerMessage(
-                  icon: Icons.info_outline,
-                  text: '\u73fe\u5728\u306f\u30c7\u30e2\u30e2\u30fc\u30c9\u3067\u52d5\u4f5c\u3057\u3066\u3044\u307e\u3059\u3002Firebase\u9023\u643a\u5f8c\u306b\u5b9f\u969b\u306e\u3059\u308c\u9055\u3044\u304c\u53ef\u80fd\u306b\u306a\u308a\u307e\u3059\u3002',
-                ),
-              if (runtimeConfig.usesMockBle)
-                const _BannerMessage(
-                  icon: Icons.bluetooth_disabled_outlined,
-                  text: 'BLE\u8fd1\u63a5\u691c\u77e5\u306f\u73fe\u5728\u30c7\u30e2\u30c7\u30fc\u30bf\u3067\u52d5\u4f5c\u4e2d\u3067\u3059\u3002\u5b9f\u6a5f\u3067\u306fBluetooth\u3092\u6709\u52b9\u306b\u3057\u3066\u304f\u3060\u3055\u3044\u3002',
-                ),
-              if (encounters.isEmpty)
-                Expanded(
-                  child: _EmptyEncountersMessage(
-                    scanAttempted: _scanAttempted,
-                  ),
-                )
-              else
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                    itemBuilder: (context, index) {
-                      final encounter = encounters[index];
-                      return _EncounterTile(encounter: encounter);
-                    },
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemCount: encounters.length,
-                  ),
-                ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('\u3059\u308c\u9055\u3044\u30ed\u30b0'),
+          actions: [
+            IconButton(
+              onPressed: _handleScanPressed,
+              icon: const Icon(Icons.wifi_tethering),
+              tooltip: '\u3059\u308c\u9055\u3044\u691c\u7d22',
+            ),
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(
+                icon: Icon(Icons.list_alt),
+                text: '\u30ea\u30b9\u30c8',
+              ),
+              Tab(
+                icon: Icon(Icons.map_outlined),
+                text: '\u30de\u30c3\u30d7',
+              ),
             ],
-          );
-        },
+          ),
+        ),
+        body: Consumer<EncounterManager>(
+          builder: (context, manager, _) {
+            if (manager.errorMessage != null) {
+              return _ErrorMessage(message: manager.errorMessage!);
+            }
+            if (!manager.isRunning) {
+              return _LoadingMessage(
+                attempted: _scanAttempted,
+                onRetry: _handleScanPressed,
+              );
+            }
+
+            final encounters = manager.encounters;
+
+            List<Widget> buildBanners() {
+              return [
+                if (runtimeConfig.usesMockService)
+                  const _BannerMessage(
+                    icon: Icons.info_outline,
+                    text:
+                        '\u73fe\u5728\u306f\u30c7\u30e2\u30e2\u30fc\u30c9\u3067\u52d5\u4f5c\u3057\u3066\u3044\u307e\u3059\u3002Firebase\u9023\u643a\u5f8c\u306b\u5b9f\u969b\u306e\u3059\u308c\u9055\u3044\u304c\u53ef\u80fd\u306b\u306a\u308a\u307e\u3059\u3002',
+                  ),
+                if (runtimeConfig.usesMockBle)
+                  const _BannerMessage(
+                    icon: Icons.bluetooth_disabled_outlined,
+                    text:
+                        'BLE\u8fd1\u63a5\u691c\u77e5\u306f\u73fe\u5728\u30c7\u30e2\u30c7\u30fc\u30bf\u3067\u52d5\u4f5c\u4e2d\u3067\u3059\u3002\u5b9f\u6a5f\u3067\u306fBluetooth\u3092\u6709\u52b9\u306b\u3057\u3066\u304f\u3060\u3055\u3044\u3002',
+                  ),
+              ];
+            }
+
+            final listTab = Column(
+              children: [
+                ...buildBanners(),
+                if (encounters.isEmpty)
+                  Expanded(
+                    child: _EmptyEncountersMessage(
+                      scanAttempted: _scanAttempted,
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 16),
+                      itemBuilder: (context, index) {
+                        final encounter = encounters[index];
+                        return _EncounterTile(encounter: encounter);
+                      },
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemCount: encounters.length,
+                    ),
+                  ),
+              ],
+            );
+
+            final mapTab = Column(
+              children: [
+                ...buildBanners(),
+                Expanded(
+                  child: EncounterMap(
+                    encounters: encounters,
+                    onMarkerTap: (encounter) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => EncounterDetailScreen(
+                            encounterId: encounter.id,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+
+            return TabBarView(
+              children: [
+                listTab,
+                mapTab,
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -198,7 +255,8 @@ class _EncounterTile extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFF4C7),
                             borderRadius: BorderRadius.circular(999),
@@ -224,7 +282,8 @@ class _EncounterTile extends StatelessWidget {
                           encounter.proximityVerified
                               ? 'BLE\u8fd1\u63a5 約${distance.toStringAsFixed(2)}m'
                               : 'GPS\u63a8\u5b9a 約${distance.round()}m',
-                          style: theme.textTheme.bodySmall?.copyWith(color: Colors.black54),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: Colors.black54),
                         ),
                       ),
                     const SizedBox(height: 10),
@@ -233,12 +292,16 @@ class _EncounterTile extends StatelessWidget {
                       runSpacing: 6,
                       children: [
                         _StatusChip(
-                          icon: encounter.liked ? Icons.favorite : Icons.favorite_border,
+                          icon: encounter.liked
+                              ? Icons.favorite
+                              : Icons.favorite_border,
                           label: encounter.liked ? 'いいね済み' : 'いいね',
                           highlight: encounter.liked,
                         ),
                         _StatusChip(
-                          icon: encounter.profile.following ? Icons.check : Icons.person_add_alt,
+                          icon: encounter.profile.following
+                              ? Icons.check
+                              : Icons.person_add_alt,
                           label: encounter.profile.following ? 'フォロー中' : 'フォロー',
                           highlight: encounter.profile.following,
                         ),
@@ -246,7 +309,9 @@ class _EncounterTile extends StatelessWidget {
                           icon: encounter.proximityVerified
                               ? Icons.bluetooth_connected
                               : Icons.bluetooth_searching,
-                          label: encounter.proximityVerified ? 'BLE検知済み' : 'BLE確認中',
+                          label: encounter.proximityVerified
+                              ? 'BLE検知済み'
+                              : 'BLE確認中',
                           highlight: encounter.proximityVerified,
                         ),
                       ],
@@ -382,7 +447,9 @@ class _LoadingMessage extends StatelessWidget {
           const CircularProgressIndicator(),
           const SizedBox(height: 16),
           Text(
-            attempted ? '\u73fe\u5728\u521d\u671f\u5316\u4e2d\u3067\u3059...\u5909\u5316\u304c\u306a\u3044\u5834\u5408\u306f\u518d\u8a66\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002' : '\u521d\u56de\u8d77\u52d5\u4e2d\u3067\u3059\u3002\u3057\u3070\u3089\u304f\u304a\u5f85\u3061\u304f\u3060\u3055\u3044\u3002',
+            attempted
+                ? '\u73fe\u5728\u521d\u671f\u5316\u4e2d\u3067\u3059...\u5909\u5316\u304c\u306a\u3044\u5834\u5408\u306f\u518d\u8a66\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002'
+                : '\u521d\u56de\u8d77\u52d5\u4e2d\u3067\u3059\u3002\u3057\u3070\u3089\u304f\u304a\u5f85\u3061\u304f\u3060\u3055\u3044\u3002',
             style: theme.textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),
@@ -428,7 +495,3 @@ class _BannerMessage extends StatelessWidget {
     );
   }
 }
-
-
-
-

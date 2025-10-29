@@ -19,6 +19,8 @@ dependencies:
   flutter_ble_peripheral: ^1.2.6
   permission_handler: ^11.3.0
   qr_flutter: ^4.1.0
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
 
 dev_dependencies:
   flutter_test:

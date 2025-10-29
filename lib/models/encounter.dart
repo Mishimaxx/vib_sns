@@ -11,6 +11,8 @@ class Encounter {
     this.liked = false,
     this.gpsDistanceMeters,
     this.bleDistanceMeters,
+    this.latitude,
+    this.longitude,
   });
 
   final String id;
@@ -20,6 +22,8 @@ class Encounter {
   String? message;
   double? gpsDistanceMeters;
   double? bleDistanceMeters;
+  double? latitude;
+  double? longitude;
   bool unread;
   bool liked;
 

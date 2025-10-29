@@ -21,7 +21,8 @@ class FirestoreStreetPassService implements StreetPassService {
         _sharedPreferences = sharedPreferences,
         _presenceTimeout = presenceTimeout ?? const Duration(minutes: 10),
         _detectionRadiusMeters = detectionRadiusMeters ?? 5000,
-        _encounterController = StreamController<StreetPassEncounterData>.broadcast();
+        _encounterController =
+            StreamController<StreetPassEncounterData>.broadcast();
 
   static const prefsDeviceIdKey = 'streetpass_device_id';
   static const _presenceCollection = 'streetpass_presences';
@@ -34,7 +35,8 @@ class FirestoreStreetPassService implements StreetPassService {
   final StreamController<StreetPassEncounterData> _encounterController;
 
   StreamSubscription<Position>? _positionSubscription;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _presenceSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _presenceSubscription;
   Profile? _localProfile;
   String? _deviceId;
   bool _started = false;
@@ -45,7 +47,8 @@ class FirestoreStreetPassService implements StreetPassService {
   final Map<String, DateTime> _lastEncounterByProfile = {};
 
   @override
-  Stream<StreetPassEncounterData> get encounterStream => _encounterController.stream;
+  Stream<StreetPassEncounterData> get encounterStream =>
+      _encounterController.stream;
 
   @override
   Future<void> start(Profile localProfile) async {
@@ -70,7 +73,9 @@ class FirestoreStreetPassService implements StreetPassService {
       accuracy: LocationAccuracy.best,
       distanceFilter: 5,
     );
-    _positionSubscription = _geolocator.getPositionStream(locationSettings: locationSettings).listen(
+    _positionSubscription = _geolocator
+        .getPositionStream(locationSettings: locationSettings)
+        .listen(
       (position) async {
         try {
           await _handlePosition(position);
@@ -84,7 +89,8 @@ class FirestoreStreetPassService implements StreetPassService {
     );
 
     unawaited(_publishInitialPresence().catchError((error, stackTrace) {
-      _encounterController.addError(error, stackTrace as StackTrace? ?? StackTrace.current);
+      _encounterController.addError(
+          error, stackTrace as StackTrace? ?? StackTrace.current);
     }));
   }
 
@@ -190,7 +196,8 @@ class FirestoreStreetPassService implements StreetPassService {
 
       final lastTime = _lastEncounterByProfile[doc.id];
       final now = DateTime.now();
-      if (lastTime != null && now.difference(lastTime) < const Duration(seconds: 30)) {
+      if (lastTime != null &&
+          now.difference(lastTime) < const Duration(seconds: 30)) {
         continue;
       }
       _lastEncounterByProfile[doc.id] = now;
@@ -203,6 +210,8 @@ class FirestoreStreetPassService implements StreetPassService {
           encounteredAt: now,
           gpsDistanceMeters: distance,
           message: data['message'] as String?,
+          latitude: lat,
+          longitude: lng,
         ),
       );
     }
@@ -210,7 +219,8 @@ class FirestoreStreetPassService implements StreetPassService {
 
   void _subscribePresence() {
     _presenceSubscription?.cancel();
-    _presenceSubscription = _firestore.collection(_presenceCollection).snapshots().listen(
+    _presenceSubscription =
+        _firestore.collection(_presenceCollection).snapshots().listen(
       (snapshot) {
         unawaited(_ensureRecentPosition().then((position) {
           if (position == null) return;
@@ -228,13 +238,16 @@ class FirestoreStreetPassService implements StreetPassService {
     if (permission == LocationPermission.denied) {
       permission = await _geolocator.requestPermission();
     }
-    if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
-      throw StreetPassPermissionDenied('\u4f4d\u7f6e\u60c5\u5831\u3078\u306e\u30a2\u30af\u30bb\u30b9\u304c\u8a31\u53ef\u3055\u308c\u3066\u3044\u307e\u305b\u3093\u3002');
+    if (permission == LocationPermission.deniedForever ||
+        permission == LocationPermission.denied) {
+      throw StreetPassPermissionDenied(
+          '\u4f4d\u7f6e\u60c5\u5831\u3078\u306e\u30a2\u30af\u30bb\u30b9\u304c\u8a31\u53ef\u3055\u308c\u3066\u3044\u307e\u305b\u3093\u3002');
     }
 
     final serviceEnabled = await _geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      throw StreetPassException('\u4f4d\u7f6e\u60c5\u5831\u30b5\u30fc\u30d3\u30b9\u304c\u7121\u52b9\u3067\u3059\u3002\u30c7\u30d0\u30a4\u30b9\u306e\u8a2d\u5b9a\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
+      throw StreetPassException(
+          '\u4f4d\u7f6e\u60c5\u5831\u30b5\u30fc\u30d3\u30b9\u304c\u7121\u52b9\u3067\u3059\u3002\u30c7\u30d0\u30a4\u30b9\u306e\u8a2d\u5b9a\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
     }
   }
 
@@ -281,7 +294,9 @@ class FirestoreStreetPassService implements StreetPassService {
     if (!forceRefresh) {
       final last = _lastPosition;
       final updatedAt = _lastPositionUpdatedAt;
-      if (last != null && updatedAt != null && now.difference(updatedAt) < const Duration(seconds: 10)) {
+      if (last != null &&
+          updatedAt != null &&
+          now.difference(updatedAt) < const Duration(seconds: 10)) {
         return last;
       }
     }

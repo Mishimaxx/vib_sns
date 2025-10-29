@@ -25,6 +25,8 @@ class MockStreetPassService implements StreetPassService {
     _started = true;
     final rnd = Random(seed ?? 42);
     final sampleProfiles = _buildSampleProfiles();
+    const baseLat = 35.681236;
+    const baseLng = 139.767125;
     var index = 0;
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (index >= sampleProfiles.length) {
@@ -32,6 +34,8 @@ class MockStreetPassService implements StreetPassService {
         return;
       }
       final profile = sampleProfiles[index++];
+      final offsetLat = (rnd.nextDouble() - 0.5) * 0.02;
+      final offsetLng = (rnd.nextDouble() - 0.5) * 0.02;
       _controller.add(
         StreetPassEncounterData(
           remoteId: profile.id,
@@ -43,6 +47,8 @@ class MockStreetPassService implements StreetPassService {
           message: rnd.nextBool()
               ? '\u4eca\u5ea6\u4e00\u7dd2\u306b\u904a\u3073\u307e\u3057\u3087\u3046\uff01'
               : null,
+          latitude: baseLat + offsetLat,
+          longitude: baseLng + offsetLng,
         ),
       );
     });

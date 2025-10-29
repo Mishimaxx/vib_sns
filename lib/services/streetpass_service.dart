@@ -8,6 +8,8 @@ class StreetPassEncounterData {
     required this.encounteredAt,
     required this.gpsDistanceMeters,
     this.message,
+    this.latitude,
+    this.longitude,
   });
 
   final String remoteId;
@@ -16,6 +18,8 @@ class StreetPassEncounterData {
   final DateTime encounteredAt;
   final double gpsDistanceMeters;
   final String? message;
+  final double? latitude;
+  final double? longitude;
 }
 
 abstract class StreetPassService {
