@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/encounter.dart';
+import '../models/profile.dart';
 import '../state/encounter_manager.dart';
-import '../widgets/profile_avatar.dart';
+import '../state/profile_controller.dart';
 import '../widgets/like_button.dart';
+import '../widgets/profile_avatar.dart';
+import '../widgets/profile_info_tile.dart';
+import '../widgets/profile_stats_row.dart';
+import 'profile_follow_list_sheet.dart';
+import 'profile_view_screen.dart';
 
 class EncounterDetailScreen extends StatefulWidget {
   const EncounterDetailScreen({super.key, required this.encounterId});
@@ -77,122 +83,142 @@ class _EncounterDetailBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final profile = encounter.profile;
     final theme = Theme.of(context);
+    final viewerId = context.read<ProfileController>().profile.id;
     final double? gpsDistance = encounter.gpsDistanceMeters;
     final double? bleDistance = encounter.bleDistanceMeters;
+    final bio = _displayOrPlaceholder(profile.bio);
+    final homeTown = _displayOrPlaceholder(profile.homeTown);
+    final hobbies = _hobbiesOrPlaceholder(profile.favoriteGames);
+    final encounterTime = _formattedDate(encounter.encounteredAt);
+    final distanceSummary = _distanceSummary(gpsDistance, bleDistance);
+    final message = encounter.message?.trim();
+
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 88),
-        child: ListView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                ProfileAvatar(profile: profile, radius: 48),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(profile.displayName,
-                          style: theme.textTheme.headlineSmall),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(Icons.place_outlined, size: 20),
-                          const SizedBox(width: 4),
-                          Text(profile.homeTown,
-                              style: theme.textTheme.bodyMedium),
-                        ],
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF4C7),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Center(
+                            child: ProfileAvatar(profile: profile, radius: 32),
+                          ),
+                        ),
+                        const SizedBox(width: 18),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                profile.displayName,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '\u3059\u308c\u9055\u3044\u65e5\u6642: $encounterTime',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              if (homeTown != '\u672a\u767b\u9332') ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.place_outlined, size: 20),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        homeTown,
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if (distanceSummary != null) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  distanceSummary,
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    ProfileStatsRow(
+                      profile: profile,
+                      onFollowersTap: () => _openRelationsSheet(
+                        context,
+                        profile,
+                        viewerId,
+                        ProfileFollowSheetMode.followers,
                       ),
-                      if (gpsDistance != null) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Icon(Icons.map_outlined, size: 20),
-                            const SizedBox(width: 4),
-                            Text(
-                              'GPS\u63a8\u5b9a \u7d04${gpsDistance.round()}m',
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (bleDistance != null) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Icon(Icons.bluetooth_connected, size: 20),
-                            const SizedBox(width: 4),
-                            Text(
-                              'BLE\u8fd1\u63a5 \u7d04${bleDistance.toStringAsFixed(2)}m',
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 8),
+                      onFollowingTap: () => _openRelationsSheet(
+                        context,
+                        profile,
+                        viewerId,
+                        ProfileFollowSheetMode.following,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      '\u30b9\u30c6\u30fc\u30bf\u30b9',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 10),
+                    ProfileInfoTile(
+                      icon: Icons.mood,
+                      title: '\u4e00\u8a00\u30b3\u30e1\u30f3\u30c8',
+                      value: bio,
+                    ),
+                    ProfileInfoTile(
+                      icon: Icons.place_outlined,
+                      title: '\u6d3b\u52d5\u30a8\u30ea\u30a2',
+                      value: homeTown,
+                    ),
+                    ProfileInfoTile(
+                      icon: Icons.palette_outlined,
+                      title: '\u8da3\u5473',
+                      value: hobbies,
+                    ),
+                    if (message != null && message.isNotEmpty) ...[
+                      const SizedBox(height: 20),
                       Text(
-                        '\u3059\u308c\u9055\u3063\u305f\u65e5\u6642: ${_formattedDate(encounter.encounteredAt)}',
-                        style: theme.textTheme.bodySmall,
+                        '\u3059\u308c\u9055\u3044\u30e1\u30c3\u30bb\u30fc\u30b8',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF4C7),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          message,
+                          style: theme.textTheme.bodyLarge,
+                        ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            _Section(
-              title: '\u81ea\u5df1\u7d39\u4ecb',
-              child: Text(profile.bio, style: theme.textTheme.bodyLarge),
-            ),
-            _Section(
-              title: '\u8da3\u5473',
-              child: profile.favoriteGames.isEmpty
-                  ? Text('\u672a\u767b\u9332', style: theme.textTheme.bodyLarge)
-                  : Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: profile.favoriteGames
-                          .map(
-                            (game) => Chip(
-                              label: Text(game),
-                              avatar:
-                                  const Icon(Icons.palette_outlined, size: 18),
-                            ),
-                          )
-                          .toList(),
-                    ),
-            ),
-            if (encounter.message != null)
-              _Section(
-                title: '\u3059\u308c\u9055\u3044\u30e1\u30c3\u30bb\u30fc\u30b8',
-                child: Card(
-                  color: const Color(0xFFFFF4C7),
-                  margin: EdgeInsets.zero,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      encounter.message!,
-                      style: theme.textTheme.bodyLarge,
-                    ),
-                  ),
-                ),
-              ),
-            _Section(
-              title: '\u30a2\u30af\u30c6\u30a3\u30d3\u30c6\u30a3',
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _StatBadge(
-                    icon: Icons.favorite,
-                    value: encounter.profile.receivedLikes,
-                    label: '\u3082\u3089\u3063\u305f\u3044\u3044\u306d',
-                  ),
-                  _StatBadge(
-                    icon: Icons.people_alt,
-                    value: encounter.profile.following ? 1 : 0,
-                    label: '\u30d5\u30a9\u30ed\u30fc\u4e2d',
-                  ),
-                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -251,58 +277,65 @@ class _EncounterDetailBody extends StatelessWidget {
   }
 }
 
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child});
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: theme.textTheme.titleMedium),
-          const SizedBox(height: 12),
-          child,
-        ],
-      ),
-    );
+String _displayOrPlaceholder(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty || trimmed == '\u672a\u767b\u9332') {
+    return '\u672a\u767b\u9332';
   }
+  return trimmed;
 }
 
-class _StatBadge extends StatelessWidget {
-  const _StatBadge({
-    required this.icon,
-    required this.value,
-    required this.label,
-  });
-
-  final IconData icon;
-  final int value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      children: [
-        CircleAvatar(
-          radius: 28,
-          backgroundColor: theme.colorScheme.primaryContainer,
-          child: Icon(icon, color: theme.colorScheme.primary),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          value.toString(),
-          style:
-              theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        Text(label, style: theme.textTheme.bodySmall),
-      ],
-    );
+String _hobbiesOrPlaceholder(List<String> hobbies) {
+  if (hobbies.isEmpty) {
+    return '\u672a\u767b\u9332';
   }
+  return hobbies.join(', ');
+}
+
+String? _distanceSummary(double? gpsDistance, double? bleDistance) {
+  final parts = <String>[];
+  if (gpsDistance != null) {
+    parts.add('GPS\u63a8\u5b9a \u7d04${gpsDistance.round()}m');
+  }
+  if (bleDistance != null) {
+    parts.add('BLE\u8fd1\u63a5 \u7d04${bleDistance.toStringAsFixed(2)}m');
+  }
+  if (parts.isEmpty) {
+    return null;
+  }
+  return parts.join(' / ');
+}
+
+void _openRelationsSheet(
+  BuildContext context,
+  Profile profile,
+  String viewerId,
+  ProfileFollowSheetMode mode,
+) {
+  final navigator = Navigator.of(context);
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      return ProfileFollowListSheet(
+        targetId: profile.id,
+        viewerId: viewerId,
+        mode: mode,
+        onProfileTap: (selectedProfile) {
+          if (selectedProfile.id == profile.id) {
+            return;
+          }
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => ProfileViewScreen(
+                profileId: selectedProfile.id,
+                initialProfile: selectedProfile,
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
 }

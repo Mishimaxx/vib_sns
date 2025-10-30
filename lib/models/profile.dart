@@ -11,6 +11,8 @@ class Profile {
     required this.avatarColor,
     this.following = false,
     this.receivedLikes = 0,
+    this.followersCount = 0,
+    this.followingCount = 0,
   });
 
   final String id;
@@ -22,6 +24,8 @@ class Profile {
   final Color avatarColor;
   bool following;
   int receivedLikes;
+  int followersCount;
+  int followingCount;
 
   void toggleFollow() {
     following = !following;
@@ -41,6 +45,8 @@ class Profile {
     Color? avatarColor,
     bool? following,
     int? receivedLikes,
+    int? followersCount,
+    int? followingCount,
   }) {
     return Profile(
       id: id ?? this.id,
@@ -54,6 +60,8 @@ class Profile {
       avatarColor: avatarColor ?? this.avatarColor,
       following: following ?? this.following,
       receivedLikes: receivedLikes ?? this.receivedLikes,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
     );
   }
 
@@ -68,6 +76,8 @@ class Profile {
       'avatarColor': avatarColor.toARGB32(),
       'following': following,
       'receivedLikes': receivedLikes,
+      'followersCount': followersCount,
+      'followingCount': followingCount,
     };
   }
 
@@ -89,6 +99,8 @@ class Profile {
             Colors.blueAccent.toARGB32()),
         following: map['following'] as bool? ?? false,
         receivedLikes: (map['receivedLikes'] as num?)?.toInt() ?? 0,
+        followersCount: (map['followersCount'] as num?)?.toInt() ?? 0,
+        followingCount: (map['followingCount'] as num?)?.toInt() ?? 0,
       );
     } catch (_) {
       return null;

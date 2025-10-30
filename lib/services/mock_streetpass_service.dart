@@ -134,6 +134,8 @@ class MockStreetPassService implements StreetPassService {
         favoriteGames: hobbies[i],
         avatarColor: Color(colors[i % colors.length]),
         receivedLikes: 10 + i * 3,
+        followersCount: 50 + i * 7,
+        followingCount: 12 + i,
       );
     });
   }

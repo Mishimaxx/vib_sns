@@ -10,8 +10,11 @@ import 'screens/name_setup_screen.dart';
 import 'services/ble_proximity_scanner.dart';
 import 'services/ble_proximity_scanner_impl.dart';
 import 'services/firestore_streetpass_service.dart';
+import 'services/firestore_profile_interaction_service.dart';
 import 'services/mock_ble_proximity_scanner.dart';
+import 'services/mock_profile_interaction_service.dart';
 import 'services/mock_streetpass_service.dart';
+import 'services/profile_interaction_service.dart';
 import 'services/streetpass_service.dart';
 import 'state/encounter_manager.dart';
 import 'state/local_profile_loader.dart';
@@ -23,6 +26,7 @@ const _downloadUrl = String.fromEnvironment('DOWNLOAD_URL', defaultValue: '');
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   StreetPassService streetPassService;
+  ProfileInteractionService interactionService;
   var usesMockService = false;
 
   BleProximityScanner bleProximityScanner;
@@ -33,13 +37,16 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     streetPassService = FirestoreStreetPassService();
+    interactionService = FirestoreProfileInteractionService();
   } catch (error) {
     streetPassService = MockStreetPassService();
+    interactionService = MockProfileInteractionService();
     usesMockService = true;
   }
 
   final hasName = await LocalProfileLoader.hasDisplayName();
   final localProfile = await LocalProfileLoader.loadOrCreate();
+  await interactionService.bootstrapProfile(localProfile);
   final profileController = ProfileController(
     profile: localProfile,
     needsSetup: !hasName,
@@ -58,6 +65,7 @@ Future<void> main() async {
   runApp(
     VibSnsApp(
       streetPassService: streetPassService,
+      interactionService: interactionService,
       localProfile: localProfile,
       bleProximityScanner: bleProximityScanner,
       profileController: profileController,
@@ -74,6 +82,7 @@ class VibSnsApp extends StatelessWidget {
   const VibSnsApp({
     super.key,
     required this.streetPassService,
+    required this.interactionService,
     required this.localProfile,
     required this.bleProximityScanner,
     required this.profileController,
@@ -81,6 +90,7 @@ class VibSnsApp extends StatelessWidget {
   });
 
   final StreetPassService streetPassService;
+  final ProfileInteractionService interactionService;
   final Profile localProfile;
   final BleProximityScanner bleProximityScanner;
   final ProfileController profileController;
@@ -93,12 +103,18 @@ class VibSnsApp extends StatelessWidget {
         ChangeNotifierProvider<ProfileController>.value(
             value: profileController),
         Provider<StreetPassRuntimeConfig>.value(value: runtimeConfig),
+        Provider<ProfileInteractionService>(
+          create: (_) => interactionService,
+          dispose: (_, service) => service.dispose(),
+        ),
         ChangeNotifierProvider(
           create: (_) => EncounterManager(
             streetPassService: streetPassService,
             localProfile: localProfile,
             bleScanner: bleProximityScanner,
             usesMockBackend: runtimeConfig.usesMockService,
+            profileController: profileController,
+            interactionService: interactionService,
           ),
         ),
       ],

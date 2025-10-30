@@ -22,4 +22,22 @@ class ProfileController extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  void updateStats(
+      {int? followersCount, int? followingCount, int? receivedLikes}) {
+    final nextFollowers = followersCount ?? _profile.followersCount;
+    final nextFollowing = followingCount ?? _profile.followingCount;
+    final nextLikes = receivedLikes ?? _profile.receivedLikes;
+    if (nextFollowers == _profile.followersCount &&
+        nextFollowing == _profile.followingCount &&
+        nextLikes == _profile.receivedLikes) {
+      return;
+    }
+    _profile = _profile.copyWith(
+      followersCount: nextFollowers,
+      followingCount: nextFollowing,
+      receivedLikes: nextLikes,
+    );
+    notifyListeners();
+  }
 }

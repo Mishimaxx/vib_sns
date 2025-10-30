@@ -10,6 +10,11 @@ import '../state/encounter_manager.dart';
 import '../state/local_profile_loader.dart';
 import '../state/profile_controller.dart';
 import 'profile_edit_screen.dart';
+import '../models/profile.dart';
+import '../widgets/profile_info_tile.dart';
+import '../widgets/profile_stats_row.dart';
+import 'profile_follow_list_sheet.dart';
+import 'profile_view_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -213,6 +218,35 @@ class _ProfileScreenState extends State<_ProfileScreen> {
     }
   }
 
+  void _openRelationsSheet(
+    Profile profile,
+    ProfileFollowSheetMode mode,
+  ) {
+    final navigator = Navigator.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return ProfileFollowListSheet(
+          targetId: profile.id,
+          viewerId: profile.id,
+          mode: mode,
+          onProfileTap: (remoteProfile) {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => ProfileViewScreen(
+                  profileId: remoteProfile.id,
+                  initialProfile: remoteProfile,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -248,117 +282,99 @@ class _ProfileScreenState extends State<_ProfileScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 76,
-                  height: 76,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF4C7),
-                    borderRadius: BorderRadius.circular(24),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 76,
+                            height: 76,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4C7),
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: const Icon(Icons.person, size: 42),
+                          ),
+                          const SizedBox(width: 18),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                profile.displayName,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '\u30b5\u30de\u30ea\u30fc\u3092\u7de8\u96c6\u3057\u3066\n\u3042\u306a\u305f\u3089\u3057\u3055\u3092\u5c4a\u3051\u307e\u3057\u3087\u3046\u3002',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      ProfileStatsRow(
+                        profile: profile,
+                        onFollowersTap: () => _openRelationsSheet(
+                          profile,
+                          ProfileFollowSheetMode.followers,
+                        ),
+                        onFollowingTap: () => _openRelationsSheet(
+                          profile,
+                          ProfileFollowSheetMode.following,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        '\u30b9\u30c6\u30fc\u30bf\u30b9',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      ProfileInfoTile(
+                        icon: Icons.mood,
+                        title: '\u4e00\u8a00\u30b3\u30e1\u30f3\u30c8',
+                        value: bio,
+                      ),
+                      ProfileInfoTile(
+                        icon: Icons.place_outlined,
+                        title: '\u6d3b\u52d5\u30a8\u30ea\u30a2',
+                        value: homeTown,
+                      ),
+                      ProfileInfoTile(
+                        icon: Icons.palette_outlined,
+                        title: '\u8da3\u5473',
+                        value: hobbies,
+                      ),
+                    ],
                   ),
-                  child: const Icon(Icons.person, size: 42),
                 ),
-                const SizedBox(width: 18),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(profile.displayName,
-                        style: theme.textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    Text(
-                      '\u30b5\u30de\u30ea\u30fc\u3092\u7de8\u96c6\u3057\u3066\n\u3042\u306a\u305f\u3089\u3057\u3055\u3092\u5c4a\u3051\u307e\u3057\u3087\u3046\u3002',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                )
-              ],
-            ),
-            const SizedBox(height: 28),
-            Text('\u30b9\u30c6\u30fc\u30bf\u30b9',
-                style: theme.textTheme.titleMedium),
-            const SizedBox(height: 10),
-            _ProfileInfoTile(
-              icon: Icons.mood,
-              title: '\u4e00\u8a00\u30b3\u30e1\u30f3\u30c8',
-              value: bio,
-            ),
-            _ProfileInfoTile(
-              icon: Icons.place_outlined,
-              title: '\u6d3b\u52d5\u30a8\u30ea\u30a2',
-              value: homeTown,
-            ),
-            _ProfileInfoTile(
-              icon: Icons.palette_outlined,
-              title: '\u8da3\u5473',
-              value: hobbies,
-            ),
-            const Spacer(),
-            FilledButton.tonalIcon(
-              onPressed: _loggingOut ? null : _logout,
-              icon: const Icon(Icons.logout),
-              label: _loggingOut
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('\u30ed\u30b0\u30a2\u30a6\u30c8'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileInfoTile extends StatelessWidget {
-  const _ProfileInfoTile(
-      {required this.icon, required this.title, required this.value});
-
-  final IconData icon;
-  final String title;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFAE5),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.black87),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.labelMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.tonalIcon(
+                onPressed: _loggingOut ? null : _logout,
+                icon: const Icon(Icons.logout),
+                label: _loggingOut
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('\u30ed\u30b0\u30a2\u30a6\u30c8'),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
