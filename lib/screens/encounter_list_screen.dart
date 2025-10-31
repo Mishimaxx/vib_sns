@@ -296,6 +296,11 @@ class _EncounterTile extends StatelessWidget {
                             rawWidth.isFinite && rawWidth > 0
                                 ? rawWidth
                                 : availableWidth / 2;
+                        final int displayLikeCount = encounter.liked
+                            ? (encounter.profile.receivedLikes > 0
+                                ? encounter.profile.receivedLikes
+                                : 1)
+                            : 0; // Hide counter until the viewer likes to avoid phantom "1" states.
                         return Row(
                           children: [
                             SizedBox(
@@ -306,7 +311,7 @@ class _EncounterTile extends StatelessWidget {
                                 child: LikeButton(
                                   variant: LikeButtonVariant.chip,
                                   isLiked: encounter.liked,
-                                  likeCount: encounter.profile.receivedLikes,
+                                  likeCount: displayLikeCount,
                                   onPressed: () {
                                     context
                                         .read<EncounterManager>()

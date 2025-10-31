@@ -17,6 +17,7 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
   final FirebaseFirestore _firestore;
   final Map<String, _ProfileWatcher> _watchers = {};
   final Map<String, _RelationshipWatcher> _relationWatchers = {};
+  final Map<String, _LikesWatcher> _likeWatchers = {};
   final Map<String, _FollowingCache> _followingCaches = {};
 
   @override
@@ -25,8 +26,15 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
     await _firestore.runTransaction((transaction) async {
       final ref = profiles.doc(profile.id);
       final snapshot = await transaction.get(ref);
+      if (!snapshot.exists) {
+        // Log profile creation attempts so we can trace unexpected/profile
+        // proliferation during testing. This will help identify which
+        // client(s) are causing extra documents to appear in Firestore.
+        debugPrint(
+            'bootstrapProfile: creating profile doc id=${profile.id} beaconId=${profile.beaconId} displayName="${profile.displayName}"');
+        debugPrint(StackTrace.current.toString());
+      }
       final data = <String, dynamic>{
-        'displayName': profile.displayName,
         'bio': profile.bio,
         'homeTown': profile.homeTown,
         'favoriteGames': profile.favoriteGames,
@@ -34,12 +42,27 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
         'avatarColor': profile.avatarColor.value,
         'updatedAt': FieldValue.serverTimestamp(),
       };
+      // Only write displayName if it's non-empty (avoid writing placeholder
+      // defaults like empty string). This prevents creating many profiles with
+      // a generic name when the user hasn't completed setup.
+      if (profile.displayName.trim().isNotEmpty) {
+        data['displayName'] = profile.displayName;
+      }
       if (!snapshot.exists) {
         data.addAll({
           'followersCount': profile.followersCount,
           'followingCount': profile.followingCount,
           'receivedLikes': profile.receivedLikes,
         });
+      }
+      // Record whether we're creating a new doc or merging into an existing
+      // one so we can correlate client logs with Firestore documents.
+      if (!snapshot.exists) {
+        debugPrint(
+            'bootstrapProfile: transaction.set -> creating ${profile.id}');
+      } else {
+        debugPrint(
+            'bootstrapProfile: transaction.set -> merging into ${profile.id}');
       }
       transaction.set(ref, data, SetOptions(merge: true));
     });
@@ -125,6 +148,30 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
   }
 
   @override
+  Stream<List<ProfileLikeSnapshot>> watchLikes({
+    required String targetId,
+    required String viewerId,
+  }) {
+    final key = 'likes|$targetId|$viewerId';
+    final existing = _likeWatchers[key];
+    if (existing != null) {
+      return existing.stream;
+    }
+    final watcher = _LikesWatcher(
+      firestore: _firestore,
+      targetId: targetId,
+      viewerId: viewerId,
+      getFollowingCache: _ensureFollowingCache,
+      onEmpty: () {
+        final current = _likeWatchers.remove(key);
+        current?.dispose();
+      },
+    );
+    _likeWatchers[key] = watcher;
+    return watcher.stream;
+  }
+
+  @override
   Future<void> setLike({
     required String targetId,
     required String viewerId,
@@ -133,18 +180,24 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
     if (targetId.isEmpty || viewerId.isEmpty || targetId == viewerId) {
       return;
     }
-    final targetRef = _firestore.collection(_profilesCollection).doc(targetId);
+    final profiles = _firestore.collection(_profilesCollection);
+    final targetRef = profiles.doc(targetId);
+    final viewerRef = profiles.doc(viewerId);
     final likeRef = targetRef.collection('likes').doc(viewerId);
 
     await _firestore.runTransaction((transaction) async {
       final targetSnap = await transaction.get(targetRef);
+      final viewerSnap = await transaction.get(viewerRef);
       final likeSnap = await transaction.get(likeRef);
       var likes = (targetSnap.data()?['receivedLikes'] as num?)?.toInt() ?? 0;
+      final viewerProfile =
+          _profileFromDocument(viewerSnap, fallbackId: viewerId);
 
       if (like && !likeSnap.exists) {
         likes += 1;
         transaction.set(likeRef, {
           'createdAt': FieldValue.serverTimestamp(),
+          'profile': _profileSummary(viewerProfile),
         });
         transaction.set(
             targetRef,
@@ -274,6 +327,10 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
       watcher.dispose();
     }
     _relationWatchers.clear();
+    for (final watcher in _likeWatchers.values.toList()) {
+      watcher.dispose();
+    }
+    _likeWatchers.clear();
     for (final cache in _followingCaches.values.toList()) {
       cache.dispose();
     }
@@ -617,6 +674,168 @@ class _RelationEntry {
 
   final Profile profile;
   final DateTime? followedAt;
+}
+
+class _LikeEntry {
+  _LikeEntry({required this.profile, this.likedAt});
+
+  final Profile profile;
+  final DateTime? likedAt;
+}
+
+class _LikesWatcher {
+  _LikesWatcher({
+    required FirebaseFirestore firestore,
+    required this.targetId,
+    required this.viewerId,
+    required this.getFollowingCache,
+    required VoidCallback onEmpty,
+  })  : _firestore = firestore,
+        _onEmpty = onEmpty {
+    _controller = StreamController<List<ProfileLikeSnapshot>>.broadcast(
+      onListen: _handleListen,
+      onCancel: _handleCancel,
+    );
+  }
+
+  final FirebaseFirestore _firestore;
+  final String targetId;
+  final String viewerId;
+  final _FollowingCache Function(String viewerId) getFollowingCache;
+  final VoidCallback _onEmpty;
+
+  late final StreamController<List<ProfileLikeSnapshot>> _controller;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _likesSub;
+  StreamSubscription<Set<String>>? _followingSub;
+  _FollowingCache? _followingCache;
+  int _listenerCount = 0;
+  bool _isDisposed = false;
+  List<_LikeEntry> _entries = const [];
+  Set<String> _viewerFollowing = const {};
+
+  Stream<List<ProfileLikeSnapshot>> get stream => _controller.stream;
+
+  void _handleListen() {
+    _listenerCount++;
+    if (_listenerCount == 1) {
+      _subscribe();
+    }
+    if (_entries.isNotEmpty && !_controller.isClosed) {
+      scheduleMicrotask(_emitLatest);
+    }
+  }
+
+  void _handleCancel() {
+    _listenerCount = max(0, _listenerCount - 1);
+    if (_listenerCount == 0) {
+      _unsubscribe();
+      _onEmpty();
+    }
+  }
+
+  void _subscribe() {
+    final profiles = _firestore
+        .collection(FirestoreProfileInteractionService._profilesCollection);
+    final docRef = profiles.doc(targetId);
+    _likesSub = docRef
+        .collection('likes')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        unawaited(_rebuild(snapshot.docs));
+      },
+      onError: (error, stackTrace) {
+        if (!_controller.isClosed) {
+          _controller.addError(error, stackTrace);
+        }
+      },
+    );
+
+    _followingCache = getFollowingCache(viewerId);
+    _viewerFollowing = _followingCache?.current ?? const {};
+    _followingSub = _followingCache?.stream.listen(
+      (ids) {
+        _viewerFollowing = ids;
+        _emitLatest();
+      },
+      onError: (error, stackTrace) {
+        if (!_controller.isClosed) {
+          _controller.addError(error, stackTrace);
+        }
+      },
+    );
+  }
+
+  Future<void> _rebuild(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    final results = <_LikeEntry>[];
+    for (final doc in docs) {
+      final entry = await _buildEntry(doc);
+      if (entry != null) {
+        results.add(entry);
+      }
+    }
+    _entries = results;
+    _emitLatest();
+  }
+
+  Future<_LikeEntry?> _buildEntry(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    Profile? profile;
+    final profileData = data['profile'];
+    if (profileData is Map<String, dynamic>) {
+      profile = Profile.fromMap(Map<String, dynamic>.from(profileData));
+    }
+    profile ??= await _loadProfile(_firestore, doc.id);
+    if (profile == null) {
+      return null;
+    }
+    final createdAt = data['createdAt'];
+    DateTime? likedAt;
+    if (createdAt is Timestamp) {
+      likedAt = createdAt.toDate();
+    }
+    return _LikeEntry(profile: profile, likedAt: likedAt);
+  }
+
+  void _emitLatest() {
+    if (_controller.isClosed || !_controller.hasListener) {
+      return;
+    }
+    final snapshots = _entries
+        .map(
+          (entry) => ProfileLikeSnapshot(
+            profile: entry.profile,
+            isFollowedByViewer: _viewerFollowing.contains(entry.profile.id),
+            likedAt: entry.likedAt,
+          ),
+        )
+        .toList(growable: false);
+    if (!_controller.isClosed) {
+      _controller.add(snapshots);
+    }
+  }
+
+  void _unsubscribe() {
+    unawaited(_likesSub?.cancel());
+    unawaited(_followingSub?.cancel());
+    _likesSub = null;
+    _followingSub = null;
+    _followingCache = null;
+    _entries = const [];
+  }
+
+  void dispose() {
+    if (_isDisposed) {
+      return;
+    }
+    _isDisposed = true;
+    _unsubscribe();
+    unawaited(_controller.close());
+  }
 }
 
 class _FollowingCache {

@@ -28,6 +28,18 @@ class ProfileFollowSnapshot {
   final DateTime? followedAt;
 }
 
+class ProfileLikeSnapshot {
+  ProfileLikeSnapshot({
+    required this.profile,
+    required this.isFollowedByViewer,
+    this.likedAt,
+  });
+
+  final Profile profile;
+  final bool isFollowedByViewer;
+  final DateTime? likedAt;
+}
+
 abstract class ProfileInteractionService {
   Future<void> bootstrapProfile(Profile profile);
 
@@ -42,6 +54,11 @@ abstract class ProfileInteractionService {
   });
 
   Stream<List<ProfileFollowSnapshot>> watchFollowing({
+    required String targetId,
+    required String viewerId,
+  });
+
+  Stream<List<ProfileLikeSnapshot>> watchLikes({
     required String targetId,
     required String viewerId,
   });

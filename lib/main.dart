@@ -1,4 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -20,6 +22,7 @@ import 'state/encounter_manager.dart';
 import 'state/local_profile_loader.dart';
 import 'state/profile_controller.dart';
 import 'state/runtime_config.dart';
+import 'state/notification_manager.dart';
 
 const _downloadUrl = String.fromEnvironment('DOWNLOAD_URL', defaultValue: '');
 
@@ -45,11 +48,58 @@ Future<void> main() async {
   }
 
   final hasName = await LocalProfileLoader.hasDisplayName();
+
+  // Ensure there is an authenticated user so server-side deletion can be
+  // performed on logout. If no auth is present, sign in anonymously.
+  try {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await FirebaseAuth.instance.signInAnonymously();
+    }
+  } catch (e) {
+    debugPrint('Anonymous sign-in failed: $e');
+  }
+
   final localProfile = await LocalProfileLoader.loadOrCreate();
-  await interactionService.bootstrapProfile(localProfile);
+
+  // If the user is authenticated, attach the auth UID to the profile document
+  // so server-side Callable Functions can validate ownership. We write the
+  // authUid into the profiles/{id} doc (merge) when present.
+  final currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser != null) {
+    try {
+      debugPrint(
+          'main: persisting authUid=${currentUser.uid} for localProfile.id=${localProfile.id} displayName="${localProfile.displayName}"');
+      await FirebaseFirestore.instance
+          .collection('profiles')
+          .doc(localProfile.id)
+          .set({'authUid': currentUser.uid}, SetOptions(merge: true));
+      debugPrint('main: persisted authUid for profile ${localProfile.id}');
+    } catch (e) {
+      debugPrint('Failed to persist authUid on profile: $e');
+    }
+  }
+
+  debugPrint(
+      'main: about to bootstrapProfile for localProfile.id=${localProfile.id} beaconId=${localProfile.beaconId} authUid=${currentUser?.uid} hasName=$hasName');
+
+  // Avoid creating a Firestore profile doc for unauthenticated users who
+  // haven't set a display name yet. Creating a new device id (e.g. after
+  // a wipe) while anonymous sign-in is unavailable caused many profiles to
+  // appear in Firestore. Only bootstrap when we have an auth user or the
+  // local profile already has a display name.
+  if (currentUser != null || hasName) {
+    await interactionService.bootstrapProfile(localProfile);
+  } else {
+    debugPrint(
+        'main: skipping bootstrapProfile because no auth and no displayName');
+  }
   final profileController = ProfileController(
     profile: localProfile,
     needsSetup: !hasName,
+  );
+  final notificationManager = NotificationManager(
+    interactionService: interactionService,
+    localProfile: localProfile,
   );
 
   try {
@@ -69,6 +119,7 @@ Future<void> main() async {
       localProfile: localProfile,
       bleProximityScanner: bleProximityScanner,
       profileController: profileController,
+      notificationManager: notificationManager,
       runtimeConfig: StreetPassRuntimeConfig(
         usesMockService: usesMockService,
         usesMockBle: usesMockBle,
@@ -86,6 +137,7 @@ class VibSnsApp extends StatelessWidget {
     required this.localProfile,
     required this.bleProximityScanner,
     required this.profileController,
+    required this.notificationManager,
     required this.runtimeConfig,
   });
 
@@ -94,6 +146,7 @@ class VibSnsApp extends StatelessWidget {
   final Profile localProfile;
   final BleProximityScanner bleProximityScanner;
   final ProfileController profileController;
+  final NotificationManager notificationManager;
   final StreetPassRuntimeConfig runtimeConfig;
 
   @override
@@ -102,6 +155,8 @@ class VibSnsApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider<ProfileController>.value(
             value: profileController),
+        ChangeNotifierProvider<NotificationManager>.value(
+            value: notificationManager),
         Provider<StreetPassRuntimeConfig>.value(value: runtimeConfig),
         Provider<ProfileInteractionService>(
           create: (_) => interactionService,
@@ -115,6 +170,7 @@ class VibSnsApp extends StatelessWidget {
             usesMockBackend: runtimeConfig.usesMockService,
             profileController: profileController,
             interactionService: interactionService,
+            notificationManager: notificationManager,
           ),
         ),
       ],

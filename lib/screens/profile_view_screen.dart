@@ -32,6 +32,8 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   ProfileInteractionSnapshot? _latestSnapshot;
   StreamSubscription<ProfileInteractionSnapshot>? _subscription;
   bool _isProcessingFollow = false;
+  bool _isProcessingLike = false;
+  bool _isLikedByViewer = false;
   bool _isLoadingDetails = false;
 
   @override
@@ -80,6 +82,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
             receivedLikes: snapshot.receivedLikes,
             following: snapshot.isFollowedByViewer,
           );
+          _isLikedByViewer = snapshot.isLikedByViewer;
         });
       },
       onError: (error, stackTrace) {
@@ -137,6 +140,41 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
       if (mounted) {
         setState(() => _isProcessingFollow = false);
       }
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    if (_isProcessingLike || widget.profileId == _viewerId) return;
+    final service = context.read<ProfileInteractionService>();
+    final shouldLike = !_isLikedByViewer;
+    setState(() {
+      _isProcessingLike = true;
+      final delta = shouldLike ? 1 : -1;
+      _isLikedByViewer = shouldLike;
+      _profile = _profile.copyWith(
+        receivedLikes: (_profile.receivedLikes + delta).clamp(0, 999999),
+      );
+    });
+    try {
+      await service.setLike(
+        targetId: widget.profileId,
+        viewerId: _viewerId,
+        like: shouldLike,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLikedByViewer = !_isLikedByViewer;
+        _profile = _profile.copyWith(
+          receivedLikes: (_profile.receivedLikes + (_isLikedByViewer ? 1 : -1))
+              .clamp(0, 999999),
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('いいねの更新に失敗しました: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _isProcessingLike = false);
     }
   }
 
@@ -257,17 +295,54 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                   ),
                   if (!isSelf) ...[
                     const SizedBox(height: 16),
-                    IgnorePointer(
-                      ignoring: _isProcessingFollow,
-                      child: Opacity(
-                        opacity: _isProcessingFollow ? 0.7 : 1,
-                        child: FollowButton(
-                          isFollowing: _profile.following,
-                          onPressed: _toggleFollow,
-                          variant: LikeButtonVariant.hero,
-                          maxWidth: double.infinity,
-                        ),
-                      ),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final double width = constraints.maxWidth;
+                        final bool compact = width < 360;
+                        final double maxHeight = compact ? 58 : 68;
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: maxHeight,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: LikeButton(
+                                    variant: LikeButtonVariant.hero,
+                                    isLiked: _isLikedByViewer,
+                                    likeCount: _profile.receivedLikes,
+                                    onPressed: _toggleLike,
+                                    maxHeight: maxHeight,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: SizedBox(
+                                height: maxHeight,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerRight,
+                                  child: IgnorePointer(
+                                    ignoring: _isProcessingFollow,
+                                    child: Opacity(
+                                      opacity: _isProcessingFollow ? 0.7 : 1,
+                                      child: FollowButton(
+                                        variant: LikeButtonVariant.hero,
+                                        isFollowing: _profile.following,
+                                        onPressed: _toggleFollow,
+                                        maxHeight: maxHeight,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ],

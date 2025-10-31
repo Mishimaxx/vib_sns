@@ -11,6 +11,7 @@ class MockProfileInteractionService implements ProfileInteractionService {
   final Map<String, _MockProfileState> _profiles = {};
   final Map<String, _MockWatcher> _watchers = {};
   final Map<String, _MockRelationWatcher> _relationWatchers = {};
+  final Map<String, _MockLikeWatcher> _likeWatchers = {};
 
   @override
   Future<void> bootstrapProfile(Profile profile) async {
@@ -122,26 +123,58 @@ class MockProfileInteractionService implements ProfileInteractionService {
   }
 
   @override
+  Stream<List<ProfileLikeSnapshot>> watchLikes({
+    required String targetId,
+    required String viewerId,
+  }) {
+    final key = 'likes|$targetId|$viewerId';
+    final existing = _likeWatchers[key];
+    if (existing != null) {
+      return existing.stream;
+    }
+
+    late final _MockLikeWatcher watcher;
+    void handleEmpty() {
+      final current = _likeWatchers[key];
+      if (current == watcher) {
+        _likeWatchers.remove(key);
+      }
+      watcher.dispose();
+    }
+
+    watcher = _MockLikeWatcher(
+      targetId: targetId,
+      viewerId: viewerId,
+      stateLookup: _getProfileState,
+      onEmpty: handleEmpty,
+    );
+    _likeWatchers[key] = watcher;
+    return watcher.stream;
+  }
+
+  @override
   Future<void> setLike({
     required String targetId,
     required String viewerId,
     required bool like,
-  }) async {
-    if (targetId.isEmpty || viewerId.isEmpty || targetId == viewerId) {
-      return;
-    }
-    final target = _getProfileState(targetId);
-    final likedBefore = target.likedBy.contains(viewerId);
+    }) async {
+      if (targetId.isEmpty || viewerId.isEmpty || targetId == viewerId) {
+        return;
+      }
+      final target = _getProfileState(targetId);
+      final likedBefore = target.likedBy.containsKey(viewerId);
 
-    if (like && !likedBefore) {
-      target.likedBy.add(viewerId);
-      target.receivedLikes += 1;
-    } else if (!like && likedBefore) {
-      target.likedBy.remove(viewerId);
+      if (like && !likedBefore) {
+        target.likedBy[viewerId] = DateTime.now();
+        target.receivedLikes += 1;
+      } else if (!like && likedBefore) {
+        target.likedBy.remove(viewerId);
       target.receivedLikes = max(0, target.receivedLikes - 1);
     }
 
     _notifyWatchers(targetId);
+    _notifyLikeWatchers(targetId);
+    _notifyLikeWatchers(viewerId);
   }
 
   @override
@@ -174,6 +207,8 @@ class MockProfileInteractionService implements ProfileInteractionService {
     _notifyWatchers(viewerId);
     _notifyRelationWatchers(targetId);
     _notifyRelationWatchers(viewerId);
+    _notifyLikeWatchers(targetId);
+    _notifyLikeWatchers(viewerId);
   }
 
   @override
@@ -198,6 +233,10 @@ class MockProfileInteractionService implements ProfileInteractionService {
       watcher.dispose();
     }
     _relationWatchers.clear();
+    for (final watcher in _likeWatchers.values.toList()) {
+      watcher.dispose();
+    }
+    _likeWatchers.clear();
     _profiles.clear();
   }
 
@@ -216,6 +255,15 @@ class MockProfileInteractionService implements ProfileInteractionService {
 
   void _notifyRelationWatchers(String targetId) {
     final entries = _relationWatchers.entries
+        .where((entry) => entry.value.targetId == targetId)
+        .toList(growable: false);
+    for (final entry in entries) {
+      entry.value.emit();
+    }
+  }
+
+  void _notifyLikeWatchers(String targetId) {
+    final entries = _likeWatchers.entries
         .where((entry) => entry.value.targetId == targetId)
         .toList(growable: false);
     for (final entry in entries) {
@@ -258,7 +306,7 @@ class _MockWatcher {
       followersCount: target.followersCount,
       followingCount: target.followingCount,
       isLikedByViewer:
-          viewerId == targetId ? false : target.likedBy.contains(viewerId),
+          viewerId == targetId ? false : target.likedBy.containsKey(viewerId),
       isFollowedByViewer: viewerId == targetId
           ? false
           : target.followedBy.containsKey(viewerId),
@@ -367,6 +415,88 @@ class _MockRelationWatcher {
   }
 }
 
+class _MockLikeWatcher {
+  _MockLikeWatcher({
+    required this.targetId,
+    required this.viewerId,
+    required _MockProfileState Function(String id) stateLookup,
+    required VoidCallback onEmpty,
+  })  : _stateLookup = stateLookup,
+        _onEmpty = onEmpty {
+    _controller = StreamController<List<ProfileLikeSnapshot>>.broadcast(
+      onListen: _handleListen,
+      onCancel: _handleCancel,
+    );
+  }
+
+  final String targetId;
+  final String viewerId;
+  final _MockProfileState Function(String id) _stateLookup;
+  final VoidCallback _onEmpty;
+
+  late final StreamController<List<ProfileLikeSnapshot>> _controller;
+  int _listenerCount = 0;
+  bool _isDisposed = false;
+
+  Stream<List<ProfileLikeSnapshot>> get stream => _controller.stream;
+
+  void emit() {
+    if (_controller.isClosed || !_controller.hasListener) {
+      return;
+    }
+    final targetState = _stateLookup(targetId);
+    final viewerState = _stateLookup(viewerId);
+    final viewerFollowing = viewerState.following.keys.toSet();
+    final entries = targetState.likedBy.entries.toList()
+      ..sort((a, b) {
+        final left = a.value;
+        final right = b.value;
+        if (left == null && right == null) {
+          return 0;
+        }
+        if (left == null) {
+          return 1;
+        }
+        if (right == null) {
+          return -1;
+        }
+        return right.compareTo(left);
+      });
+    final snapshots = <ProfileLikeSnapshot>[];
+    for (final entry in entries) {
+      final profileId = entry.key;
+      final state = _stateLookup(profileId);
+      final profile = _profileFromState(profileId, state);
+      snapshots.add(
+        ProfileLikeSnapshot(
+          profile: profile,
+          isFollowedByViewer: viewerFollowing.contains(profileId),
+          likedAt: entry.value,
+        ),
+      );
+    }
+    _controller.add(snapshots);
+  }
+
+  void _handleListen() {
+    _listenerCount++;
+    emit();
+  }
+
+  void _handleCancel() {
+    _listenerCount = max(0, _listenerCount - 1);
+    if (_listenerCount == 0) {
+      _onEmpty();
+    }
+  }
+
+  void dispose() {
+    if (_isDisposed) return;
+    _isDisposed = true;
+    unawaited(_controller.close());
+  }
+}
+
 class _MockProfileState {
   _MockProfileState();
 
@@ -379,7 +509,7 @@ class _MockProfileState {
   int followersCount = 0;
   int followingCount = 0;
   int receivedLikes = 0;
-  final Set<String> likedBy = <String>{};
+  final Map<String, DateTime> likedBy = <String, DateTime>{};
   final Map<String, DateTime> followedBy = <String, DateTime>{};
   final Map<String, DateTime> following = <String, DateTime>{};
 }

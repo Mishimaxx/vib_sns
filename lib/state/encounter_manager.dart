@@ -9,6 +9,7 @@ import '../services/ble_proximity_scanner.dart';
 import '../services/profile_interaction_service.dart';
 import '../services/streetpass_service.dart';
 import 'profile_controller.dart';
+import 'notification_manager.dart';
 
 class EncounterManager extends ChangeNotifier {
   EncounterManager({
@@ -18,12 +19,14 @@ class EncounterManager extends ChangeNotifier {
     bool usesMockBackend = false,
     ProfileController? profileController,
     ProfileInteractionService? interactionService,
+    NotificationManager? notificationManager,
   })  : _streetPassService = streetPassService,
         _localProfile = localProfile,
         _bleScanner = bleScanner,
         usesMockService = usesMockBackend,
         _profileController = profileController,
-        _interactionService = interactionService {
+        _interactionService = interactionService,
+        _notificationManager = notificationManager {
     _subscribeToLocalProfile();
   }
 
@@ -33,8 +36,14 @@ class EncounterManager extends ChangeNotifier {
   final bool usesMockService;
   final ProfileController? _profileController;
   final ProfileInteractionService? _interactionService;
+  final NotificationManager? _notificationManager;
 
   final Map<String, Encounter> _encountersByRemoteId = {};
+  final Map<String, _BeaconPresence> _presenceByBeaconId = {};
+  final Map<String, DateTime> _lastNotificationAt = {};
+
+  static const Duration _presenceTimeout = Duration(seconds: 45);
+  static const Duration _reencounterCooldown = Duration(minutes: 15);
   final Set<String> _targetBeaconIds = {};
   final Map<String, StreamSubscription<ProfileInteractionSnapshot>>
       _interactionSubscriptions = {};
@@ -119,7 +128,14 @@ class EncounterManager extends ChangeNotifier {
   }
 
   void _handleEncounter(StreetPassEncounterData data) {
+    final now = DateTime.now();
+    final presence = _presenceByBeaconId.putIfAbsent(
+      data.beaconId,
+      () => _BeaconPresence(),
+    );
+
     final existing = _encountersByRemoteId[data.remoteId];
+    final isRepeatCandidate = existing != null;
     if (existing != null) {
       existing.encounteredAt = data.encounteredAt;
       existing.gpsDistanceMeters = data.gpsDistanceMeters;
@@ -146,10 +162,32 @@ class EncounterManager extends ChangeNotifier {
         longitude: data.longitude,
       );
     }
+
     if (_targetBeaconIds.add(data.beaconId)) {
       _bleScanner?.updateTargetBeacons(_targetBeaconIds);
     }
     _ensureInteractionSubscription(data.remoteId);
+
+    final encounter = _encountersByRemoteId[data.remoteId];
+    if (encounter != null) {
+      final shouldNotify = !isRepeatCandidate ||
+          _shouldNotifyRepeat(
+            remoteId: data.remoteId,
+            presence: presence,
+            encounteredAt: encounter.encounteredAt,
+            fallbackNow: now,
+          );
+      if (shouldNotify) {
+        _notificationManager?.registerEncounter(
+          profile: encounter.profile,
+          encounteredAt: encounter.encounteredAt,
+          encounterId: encounter.id,
+          message: data.message,
+          isRepeat: isRepeatCandidate,
+        );
+        _lastNotificationAt[data.remoteId] = now;
+      }
+    }
     notifyListeners();
   }
 
@@ -203,6 +241,7 @@ class EncounterManager extends ChangeNotifier {
   }
 
   void _handleBleEncounter(BleProximityHit hit) {
+    _markBeaconSeen(hit.beaconId);
     Encounter? matched;
     for (final encounter in _encountersByRemoteId.values) {
       if (encounter.beaconId == hit.beaconId) {
@@ -217,6 +256,47 @@ class EncounterManager extends ChangeNotifier {
     matched.encounteredAt = DateTime.now();
     matched.unread = true;
     notifyListeners();
+  }
+
+  void _markBeaconSeen(String beaconId) {
+    final presence = _presenceByBeaconId.putIfAbsent(
+      beaconId,
+      () => _BeaconPresence(),
+    );
+    presence.markSeen(_presenceTimeout);
+  }
+
+  bool _shouldNotifyRepeat({
+    required String remoteId,
+    required _BeaconPresence presence,
+    required DateTime encounteredAt,
+    required DateTime fallbackNow,
+  }) {
+    final lastNotified = _lastNotificationAt[remoteId];
+    if (!presence.hasBleContext) {
+      if (lastNotified == null) {
+        return true;
+      }
+      return fallbackNow.difference(lastNotified) >= _reencounterCooldown;
+    }
+
+    if (presence.hasExitedSince(lastNotified)) {
+      return true;
+    }
+
+    if (lastNotified == null) {
+      return true;
+    }
+
+    return encounteredAt.difference(lastNotified) >= _reencounterCooldown;
+  }
+
+  void _clearPresenceTracking() {
+    for (final presence in _presenceByBeaconId.values) {
+      presence.dispose();
+    }
+    _presenceByBeaconId.clear();
+    _lastNotificationAt.clear();
   }
 
   Future<void> _cancelInteractionSubscriptions() async {
@@ -246,6 +326,7 @@ class EncounterManager extends ChangeNotifier {
       encounter.markRead();
       notifyListeners();
     }
+    _notificationManager?.markEncounterNotificationsRead(encounterId);
   }
 
   void toggleLike(String encounterId) {
@@ -349,6 +430,7 @@ class EncounterManager extends ChangeNotifier {
     if (localStatsSub != null) {
       unawaited(localStatsSub.cancel());
     }
+    _clearPresenceTracking();
     unawaited(_bleScanner?.stop());
     unawaited(_bleScanner?.dispose());
     unawaited(_streetPassService.stop());
@@ -366,6 +448,7 @@ class EncounterManager extends ChangeNotifier {
       await _cancelInteractionSubscriptions();
       _encountersByRemoteId.clear();
       _targetBeaconIds.clear();
+      _clearPresenceTracking();
       await _subscription?.cancel();
       _subscription = null;
       await _bleSubscription?.cancel();
@@ -379,7 +462,10 @@ class EncounterManager extends ChangeNotifier {
     }
   }
 
-  Future<void> switchLocalProfile(Profile profile) async {
+  Future<void> switchLocalProfile(Profile profile,
+      {bool skipSync = false}) async {
+    debugPrint(
+        'EncounterManager.switchLocalProfile: switching to profile.id=${profile.id} beaconId=${profile.beaconId} skipSync=$skipSync');
     try {
       await reset().timeout(const Duration(seconds: 5));
     } on TimeoutException {
@@ -390,7 +476,11 @@ class EncounterManager extends ChangeNotifier {
           'Failed to reset before switching profile: $error\n$stackTrace');
     } finally {
       _localProfile = profile;
-      _subscribeToLocalProfile();
+      debugPrint(
+          'EncounterManager.switchLocalProfile: local profile set to ${_localProfile.id}');
+      if (!skipSync) {
+        _subscribeToLocalProfile();
+      }
       if (_encountersByRemoteId.isNotEmpty) {
         await _cancelInteractionSubscriptions();
         for (final remoteId in _encountersByRemoteId.keys) {
@@ -398,5 +488,39 @@ class EncounterManager extends ChangeNotifier {
         }
       }
     }
+  }
+}
+
+class _BeaconPresence {
+  bool inRange = false;
+  bool hasBleContext = false;
+  DateTime? lastSeenAt;
+  DateTime? lastExitAt;
+  Timer? _exitTimer;
+
+  void markSeen(Duration timeout) {
+    hasBleContext = true;
+    inRange = true;
+    lastSeenAt = DateTime.now();
+    _exitTimer?.cancel();
+    _exitTimer = Timer(timeout, () {
+      inRange = false;
+      lastExitAt = DateTime.now();
+    });
+  }
+
+  bool hasExitedSince(DateTime? timestamp) {
+    if (lastExitAt == null) {
+      return false;
+    }
+    if (timestamp == null) {
+      return true;
+    }
+    return lastExitAt!.isAfter(timestamp);
+  }
+
+  void dispose() {
+    _exitTimer?.cancel();
+    _exitTimer = null;
   }
 }

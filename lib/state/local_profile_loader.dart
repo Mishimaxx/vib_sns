@@ -22,8 +22,7 @@ class LocalProfileLoader {
     final deviceId = await _ensureDeviceId(prefs);
     final beaconId = await _ensureBeaconId(prefs);
 
-    final displayName =
-        prefs.getString(_displayNameKey) ?? '\u3042\u306a\u305f';
+    final displayName = prefs.getString(_displayNameKey) ?? '';
     final bio = prefs.getString(_bioKey) ?? '\u672a\u767b\u9332';
     final homeTown = prefs.getString(_homeTownKey) ?? '\u672a\u767b\u9332';
     final favoriteGames =
@@ -57,6 +56,7 @@ class LocalProfileLoader {
       return existing;
     }
     final newId = const Uuid().v4();
+    debugPrint('LocalProfileLoader: creating new deviceId=$newId');
     await prefs.setString(FirestoreStreetPassService.prefsDeviceIdKey, newId);
     return newId;
   }
@@ -67,6 +67,7 @@ class LocalProfileLoader {
       return existing;
     }
     final newId = const Uuid().v4();
+    debugPrint('LocalProfileLoader: creating new beaconId=$newId');
     await prefs.setString(_beaconIdKey, newId);
     return newId;
   }
@@ -150,7 +151,7 @@ class LocalProfileLoader {
     await resetLocalProfile();
   }
 
-  static Future<void> resetLocalProfile() async {
+  static Future<void> resetLocalProfile({bool wipeIdentity = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_displayNameKey);
     await prefs.remove(_bioKey);
@@ -159,5 +160,10 @@ class LocalProfileLoader {
     await prefs.remove(_avatarColorKey);
     await prefs.remove(_followersCountKey);
     await prefs.remove(_followingCountKey);
+    if (wipeIdentity) {
+      debugPrint('LocalProfileLoader: wiping identity (deviceId and beaconId)');
+      await prefs.remove(FirestoreStreetPassService.prefsDeviceIdKey);
+      await prefs.remove(_beaconIdKey);
+    }
   }
 }
