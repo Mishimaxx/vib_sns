@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/profile.dart';
+import '../services/profile_interaction_service.dart';
 import '../state/encounter_manager.dart';
 import '../state/local_profile_loader.dart';
 import '../state/profile_controller.dart';
@@ -24,6 +28,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late final TextEditingController _homeTownController;
   late final TextEditingController _hobbiesController;
   bool _saving = false;
+  String? _avatarImageBase64;
+  Uint8List? _avatarImageBytes;
+  bool _avatarRemoved = false;
+  final ImagePicker _picker = ImagePicker();
+  VoidCallback? _nameListener;
 
   @override
   void initState() {
@@ -35,15 +44,35 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         TextEditingController(text: _initialValue(widget.profile.homeTown));
     _hobbiesController =
         TextEditingController(text: widget.profile.favoriteGames.join('\n'));
+    _avatarImageBase64 = widget.profile.avatarImageBase64;
+    _avatarImageBytes = _decodeAvatar(widget.profile.avatarImageBase64);
+    _nameListener = () => setState(() {});
+    _nameController.addListener(_nameListener!);
   }
 
   @override
   void dispose() {
+    if (_nameListener != null) {
+      _nameController.removeListener(_nameListener!);
+      _nameListener = null;
+    }
     _nameController.dispose();
     _bioController.dispose();
     _homeTownController.dispose();
     _hobbiesController.dispose();
     super.dispose();
+  }
+
+  Uint8List? _decodeAvatar(String? base64) {
+    if (base64 == null || base64.trim().isEmpty) {
+      return null;
+    }
+    try {
+      final bytes = base64Decode(base64.trim());
+      return bytes.isEmpty ? null : bytes;
+    } catch (_) {
+      return null;
+    }
   }
 
   String _initialValue(String value) {
@@ -65,6 +94,46 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return cleaned;
   }
 
+  Future<void> _pickAvatar() async {
+    try {
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+      );
+      if (file == null) {
+        return;
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        _showSnack(
+            '\u9078\u629e\u3057\u305f\u753b\u50cf\u304c\u7121\u52b9\u3067\u3057\u305f\u3002');
+        return;
+      }
+      setState(() {
+        _avatarImageBytes = bytes;
+        _avatarImageBase64 = base64Encode(bytes);
+        _avatarRemoved = false;
+      });
+    } catch (_) {
+      _showSnack(
+          '\u753b\u50cf\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002');
+    }
+  }
+
+  void _removeAvatar() {
+    setState(() {
+      _avatarImageBytes = null;
+      _avatarImageBase64 = null;
+      _avatarRemoved = true;
+    });
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _handleSave() async {
     if (_saving) return;
     FocusScope.of(context).unfocus();
@@ -78,6 +147,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
     final profileController = context.read<ProfileController>();
     final encounterManager = context.read<EncounterManager>();
+    final interactionService = context.read<ProfileInteractionService>();
     final wasRunning = encounterManager.isRunning;
 
     try {
@@ -86,7 +156,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         bio: bio,
         homeTown: homeTown,
         favoriteGames: hobbies,
+        avatarImageBase64: _avatarRemoved ? null : _avatarImageBase64,
+        removeAvatarImage: _avatarRemoved,
       );
+      await interactionService.bootstrapProfile(updated);
       profileController.updateProfile(updated, needsSetup: false);
       await encounterManager.switchLocalProfile(updated);
       if (wasRunning) {
@@ -146,6 +219,28 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Builder(
+                  builder: (context) {
+                    final currentName = _nameController.text.trim();
+                    final displayNameForAvatar = currentName.isNotEmpty
+                        ? currentName
+                        : widget.profile.displayName;
+                    final hasInitialAvatar =
+                        widget.profile.avatarImageBase64?.trim().isNotEmpty ??
+                            false;
+                    final hasAvatar = !_avatarRemoved &&
+                        (_avatarImageBytes != null || hasInitialAvatar);
+                    return _AvatarEditor(
+                      imageBytes: hasAvatar ? _avatarImageBytes : null,
+                      fallbackColor: widget.profile.avatarColor,
+                      displayName: displayNameForAvatar,
+                      onPickImage: _pickAvatar,
+                      onRemoveImage: hasAvatar ? _removeAvatar : null,
+                      isSaving: _saving,
+                    );
+                  },
+                ),
+                const SizedBox(height: 28),
                 TextFormField(
                   controller: _nameController,
                   textCapitalization: TextCapitalization.words,
@@ -251,6 +346,103 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AvatarEditor extends StatelessWidget {
+  const _AvatarEditor({
+    required this.imageBytes,
+    required this.fallbackColor,
+    required this.displayName,
+    required this.onPickImage,
+    this.onRemoveImage,
+    required this.isSaving,
+  });
+
+  final Uint8List? imageBytes;
+  final Color fallbackColor;
+  final String displayName;
+  final VoidCallback onPickImage;
+  final VoidCallback? onRemoveImage;
+  final bool isSaving;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final initialsSource =
+        displayName.trim().isEmpty ? '?' : displayName.trim();
+    final initial = initialsSource.characters.first;
+    final hasImage = imageBytes != null;
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            onTap: isSaving ? null : onPickImage,
+            customBorder: const CircleBorder(),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 52,
+                  backgroundColor: fallbackColor,
+                  backgroundImage: hasImage ? MemoryImage(imageBytes!) : null,
+                  child: hasImage
+                      ? null
+                      : Text(
+                          initial,
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+                Positioned(
+                  bottom: -2,
+                  right: -2,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: theme.colorScheme.surface,
+                        width: 3,
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.camera_alt_outlined,
+                      size: 18,
+                      color: theme.colorScheme.onPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: isSaving ? null : onPickImage,
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: const Text('\u753b\u50cf\u3092\u9078\u3076'),
+            ),
+            if (onRemoveImage != null)
+              TextButton.icon(
+                onPressed: isSaving ? null : onRemoveImage,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('\u753b\u50cf\u3092\u524a\u9664'),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

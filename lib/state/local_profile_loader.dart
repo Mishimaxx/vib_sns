@@ -13,6 +13,7 @@ class LocalProfileLoader {
   static const _homeTownKey = 'local_home_town';
   static const _favoriteGamesKey = 'local_favorite_games';
   static const _avatarColorKey = 'local_avatar_color';
+  static const _avatarImageKey = 'local_avatar_image';
   static const _beaconIdKey = 'local_beacon_id';
   static const _followersCountKey = 'local_followers_count';
   static const _followingCountKey = 'local_following_count';
@@ -32,6 +33,7 @@ class LocalProfileLoader {
             .toList(growable: false);
     final avatarColorValue =
         prefs.getInt(_avatarColorKey) ?? _randomAccentColorValue();
+    final avatarImageBase64 = prefs.getString(_avatarImageKey);
     final followersCount = prefs.getInt(_followersCountKey) ?? 0;
     final followingCount = prefs.getInt(_followingCountKey) ?? 0;
 
@@ -43,6 +45,7 @@ class LocalProfileLoader {
       homeTown: homeTown,
       favoriteGames: favoriteGames,
       avatarColor: Color(avatarColorValue),
+      avatarImageBase64: avatarImageBase64,
       receivedLikes: 0,
       followersCount: followersCount,
       followingCount: followingCount,
@@ -96,6 +99,8 @@ class LocalProfileLoader {
     String? homeTown,
     List<String>? favoriteGames,
     Color? avatarColor,
+    String? avatarImageBase64,
+    bool removeAvatarImage = false,
     int? followersCount,
     int? followingCount,
   }) async {
@@ -132,6 +137,16 @@ class LocalProfileLoader {
     if (avatarColor != null) {
       await prefs.setInt(_avatarColorKey, avatarColor.toARGB32());
     }
+    if (removeAvatarImage) {
+      await prefs.remove(_avatarImageKey);
+    } else if (avatarImageBase64 != null) {
+      final trimmed = avatarImageBase64.trim();
+      if (trimmed.isEmpty) {
+        await prefs.remove(_avatarImageKey);
+      } else {
+        await prefs.setString(_avatarImageKey, trimmed);
+      }
+    }
     if (followersCount != null) {
       await prefs.setInt(_followersCountKey, followersCount);
     }
@@ -158,6 +173,7 @@ class LocalProfileLoader {
     await prefs.remove(_homeTownKey);
     await prefs.remove(_favoriteGamesKey);
     await prefs.remove(_avatarColorKey);
+    await prefs.remove(_avatarImageKey);
     await prefs.remove(_followersCountKey);
     await prefs.remove(_followingCountKey);
     if (wipeIdentity) {

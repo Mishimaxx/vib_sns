@@ -23,6 +23,8 @@ class TimelinePost {
   final String? imageBase64;
   int likeCount;
   bool isLiked;
+  Uint8List? _cachedImageBytes;
+  String? _cachedImageKey;
 
   Color get authorColor => Color(authorColorValue);
 
@@ -30,9 +32,17 @@ class TimelinePost {
     if (imageBase64 == null || imageBase64!.isEmpty) {
       return null;
     }
+    if (_cachedImageBytes != null && _cachedImageKey == imageBase64) {
+      return _cachedImageBytes;
+    }
     try {
-      return base64Decode(imageBase64!);
+      final decoded = base64Decode(imageBase64!);
+      _cachedImageBytes = decoded;
+      _cachedImageKey = imageBase64;
+      return decoded;
     } catch (_) {
+      _cachedImageBytes = null;
+      _cachedImageKey = null;
       return null;
     }
   }

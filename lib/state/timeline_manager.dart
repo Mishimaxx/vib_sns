@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -12,7 +13,8 @@ class TimelineManager extends ChangeNotifier {
   TimelineManager({required ProfileController profileController})
       : _profileController = profileController {
     _profileController.addListener(_handleProfileChanged);
-    _loadPosts();
+    _activeProfileId = _profileController.profile.id;
+    _loadPostsForProfile(_activeProfileId!);
   }
 
   static const _storageKey = 'timeline_posts_v1';
@@ -20,6 +22,7 @@ class TimelineManager extends ChangeNotifier {
   final ProfileController _profileController;
   final List<TimelinePost> _posts = [];
   bool _isLoaded = false;
+  String? _activeProfileId;
 
   List<TimelinePost> get posts => List.unmodifiable(_posts);
   bool get isLoaded => _isLoaded;
@@ -30,6 +33,9 @@ class TimelineManager extends ChangeNotifier {
     required String caption,
     Uint8List? imageBytes,
   }) async {
+    if (_activeProfileId == null) {
+      return;
+    }
     final profile = _profileController.profile;
     final encodedImage = imageBytes != null && imageBytes.isNotEmpty
         ? base64Encode(imageBytes)
@@ -52,6 +58,9 @@ class TimelineManager extends ChangeNotifier {
   }
 
   Future<void> toggleLike(String postId) async {
+    if (_activeProfileId == null) {
+      return;
+    }
     final index = _posts.indexWhere((post) => post.id == postId);
     if (index == -1) {
       return;
@@ -77,12 +86,19 @@ class TimelineManager extends ChangeNotifier {
   }
 
   void _handleProfileChanged() {
-    notifyListeners();
+    final nextProfileId = _profileController.profile.id;
+    if (_activeProfileId == nextProfileId) {
+      notifyListeners();
+      return;
+    }
+    _activeProfileId = nextProfileId;
+    unawaited(_loadPostsForProfile(nextProfileId));
   }
 
-  Future<void> _loadPosts() async {
+  Future<void> _loadPostsForProfile(String profileId) async {
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getStringList(_storageKey) ?? const <String>[];
+    final stored =
+        prefs.getStringList('${_storageKey}_$profileId') ?? const <String>[];
     final loaded = <TimelinePost>[];
     for (final entry in stored) {
       try {
@@ -104,9 +120,25 @@ class TimelineManager extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
+    final profileId = _activeProfileId;
+    if (profileId == null) {
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     final serialized =
         _posts.map((post) => jsonEncode(post.toMap())).toList(growable: false);
-    await prefs.setStringList(_storageKey, serialized);
+    await prefs.setStringList('${_storageKey}_$profileId', serialized);
+  }
+
+  Future<void> clearPostsForCurrentProfile() async {
+    final profileId = _activeProfileId;
+    if (profileId == null) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('${_storageKey}_$profileId');
+    _posts.clear();
+    _isLoaded = true;
+    notifyListeners();
   }
 }

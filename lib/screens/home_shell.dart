@@ -19,6 +19,7 @@ import 'profile_edit_screen.dart';
 import '../models/profile.dart';
 import '../models/encounter.dart';
 import '../models/timeline_post.dart';
+import '../widgets/profile_avatar.dart';
 import '../widgets/profile_info_tile.dart';
 import '../widgets/profile_stats_row.dart';
 import 'profile_follow_list_sheet.dart';
@@ -171,7 +172,7 @@ class _TimelineScreen extends StatelessWidget {
                   palette: palette,
                   metrics: metrics,
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
                 _TimelineComposer(timelineManager: timelineManager),
                 const SizedBox(height: 24),
                 if (feedItems.isEmpty)
@@ -296,115 +297,127 @@ class _HighlightsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final tiles = <Widget>[
-      _HighlightTile(
-        label: '\u3059\u308c\u9055\u3044\u4eba\u6570',
-        value: '${metrics.todaysEncounters}\u4eba',
-        accent: palette.primaryAccent,
-        textColor: palette.onSurface,
+      _HighlightMetric(
+        icon: Icons.people_alt_outlined,
+        label: '\u3059\u308c\u9055\u3044',
+        value: '${metrics.todaysEncounters}',
+        color: Colors.white,
       ),
-      _HighlightTile(
+      _HighlightMetric(
+        icon: Icons.repeat,
         label: '\u518d\u4f1a',
-        value: '${metrics.reencounters}\u4eba',
-        accent: palette.secondaryAccent,
-        textColor: palette.onSurface,
+        value: '${metrics.reencounters}',
+        color: Colors.white,
       ),
-      _HighlightTile(
-        label: '\u5171\u9cf4\u6570',
+      _HighlightMetric(
+        icon: Icons.favorite,
+        label: '\u5171\u9cf4',
         value: metrics.resonance.toString(),
-        accent: palette.tertiaryAccent,
-        textColor: palette.onSurface,
+        color: Colors.white,
       ),
     ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '\u4eca\u65e5\u306e\u30cf\u30a4\u30e9\u30a4\u30c8',
-          style: theme.textTheme.titleMedium?.copyWith(
-            letterSpacing: 1.1,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 16),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final availableWidth =
-                constraints.maxWidth <= 0 ? 320.0 : constraints.maxWidth;
-            final columns = availableWidth >= 640
-                ? 3
-                : availableWidth >= 420
-                    ? 2
-                    : 1;
-            const spacing = 12.0;
-            final itemWidth = columns == 1
-                ? availableWidth
-                : (availableWidth - (columns - 1) * spacing) / columns;
-            return Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: [
-                for (final tile in tiles)
-                  SizedBox(
-                    width: itemWidth,
-                    child: tile,
-                  ),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _HighlightTile extends StatelessWidget {
-  const _HighlightTile({
-    required this.label,
-    required this.value,
-    required this.accent,
-    required this.textColor,
-  });
-
-  final String label;
-  final String value;
-  final Color accent;
-  final Color textColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withValues(alpha: 0.28)),
+        gradient: LinearGradient(
+          colors: [
+            palette.primaryAccent.withValues(alpha: 0.88),
+            palette.secondaryAccent.withValues(alpha: 0.72),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: palette.primaryAccent.withValues(alpha: 0.15),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          Text(
-            label,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: accent,
-              letterSpacing: 0.6,
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.auto_awesome,
+              color: Colors.white,
+              size: 16,
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: textColor,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                for (var i = 0; i < tiles.length; i++) ...[
+                  if (i != 0)
+                    Container(
+                      width: 1,
+                      height: 32,
+                      color: Colors.white.withValues(alpha: 0.2),
+                    ),
+                  Expanded(child: tiles[i]),
+                ],
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _HighlightMetric extends StatelessWidget {
+  const _HighlightMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          color: color.withValues(alpha: 0.9),
+          size: 18,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: color.withValues(alpha: 0.75),
+            fontSize: 11,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -530,6 +543,7 @@ class _TimelineComposerState extends State<_TimelineComposer> {
                       height: 220,
                       width: double.infinity,
                       fit: BoxFit.cover,
+                      gaplessPlayback: true,
                     ),
                   ),
                   Positioned(
@@ -777,16 +791,21 @@ class _TimelineImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return AspectRatio(
       aspectRatio: 4 / 5,
-      child: Image.memory(
-        bytes,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: Colors.grey.shade200,
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.image_not_supported_outlined,
-            size: 48,
-            color: Colors.black38,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(0),
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.high,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: Colors.grey.shade200,
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.image_not_supported_outlined,
+              size: 48,
+              color: Colors.black38,
+            ),
           ),
         ),
       ),
@@ -906,6 +925,7 @@ class _ProfileScreenState extends State<_ProfileScreen> {
     final controller = context.read<ProfileController>();
     final manager = context.read<EncounterManager>();
     final notificationManager = context.read<NotificationManager>();
+    final timelineManager = context.read<TimelineManager>();
     try {
       // If the user is authenticated, call the server-side function to
       // delete their profile and related server-side data before clearing
@@ -934,6 +954,10 @@ class _ProfileScreenState extends State<_ProfileScreen> {
       // Sign out from Firebase Auth.
       debugPrint('HomeShell._logout: signing out FirebaseAuth');
       await FirebaseAuth.instance.signOut();
+
+      // Clear locally stored timeline posts so previous shares do not
+      // reappear after logout.
+      await timelineManager.clearPostsForCurrentProfile();
 
       if (serverDeleted) {
         // Wipe local identity only if server-side deletion succeeded. This
@@ -1002,6 +1026,25 @@ class _ProfileScreenState extends State<_ProfileScreen> {
     );
   }
 
+  Future<void> _openProfileEdit() async {
+    if (!mounted) return;
+    final controller = context.read<ProfileController>();
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ProfileEditScreen(profile: controller.profile),
+      ),
+    );
+    if (!mounted) return;
+    if (result == true) {
+      messenger.showSnackBar(
+        const SnackBar(
+            content: Text(
+                '\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb\u3092\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1015,24 +1058,7 @@ class _ProfileScreenState extends State<_ProfileScreen> {
         actions: [
           IconButton(
             tooltip: '\u7de8\u96c6',
-            onPressed: () async {
-              final controller = context.read<ProfileController>();
-              final messenger = ScaffoldMessenger.of(context);
-              final result = await Navigator.of(context).push<bool>(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      ProfileEditScreen(profile: controller.profile),
-                ),
-              );
-              if (!mounted) return;
-              if (result == true) {
-                messenger.showSnackBar(
-                  const SnackBar(
-                      content: Text(
-                          '\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb\u3092\u66f4\u65b0\u3057\u307e\u3057\u305f\u3002')),
-                );
-              }
-            },
+            onPressed: _openProfileEdit,
             icon: const Icon(Icons.edit_outlined),
           ),
         ],
@@ -1050,14 +1076,22 @@ class _ProfileScreenState extends State<_ProfileScreen> {
                     children: [
                       Row(
                         children: [
-                          Container(
-                            width: 76,
-                            height: 76,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF4C7),
-                              borderRadius: BorderRadius.circular(24),
+                          Material(
+                            color: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(28),
                             ),
-                            child: const Icon(Icons.person, size: 42),
+                            child: InkWell(
+                              onTap: _openProfileEdit,
+                              borderRadius: BorderRadius.circular(28),
+                              child: Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: ProfileAvatar(
+                                  profile: profile,
+                                  radius: 32,
+                                ),
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 18),
                           Column(

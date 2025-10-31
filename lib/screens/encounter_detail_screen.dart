@@ -106,16 +106,10 @@ class _EncounterDetailBody extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Container(
-                          width: 76,
-                          height: 76,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFF4C7),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Center(
-                            child: ProfileAvatar(profile: profile, radius: 32),
-                          ),
+                        ProfileAvatar(
+                          profile: profile,
+                          radius: 38,
+                          showBorder: false,
                         ),
                         const SizedBox(width: 18),
                         Expanded(

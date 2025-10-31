@@ -9,6 +9,7 @@ class Profile {
     required this.homeTown,
     required this.favoriteGames,
     required this.avatarColor,
+    this.avatarImageBase64,
     this.following = false,
     this.receivedLikes = 0,
     this.followersCount = 0,
@@ -22,6 +23,7 @@ class Profile {
   final String homeTown;
   final List<String> favoriteGames;
   final Color avatarColor;
+  final String? avatarImageBase64;
   bool following;
   int receivedLikes;
   int followersCount;
@@ -43,6 +45,8 @@ class Profile {
     String? homeTown,
     List<String>? favoriteGames,
     Color? avatarColor,
+    String? avatarImageBase64,
+    bool clearAvatarImage = false,
     bool? following,
     int? receivedLikes,
     int? followersCount,
@@ -58,6 +62,9 @@ class Profile {
           ? List<String>.from(favoriteGames)
           : List<String>.from(this.favoriteGames),
       avatarColor: avatarColor ?? this.avatarColor,
+      avatarImageBase64: clearAvatarImage
+          ? null
+          : (avatarImageBase64 ?? this.avatarImageBase64),
       following: following ?? this.following,
       receivedLikes: receivedLikes ?? this.receivedLikes,
       followersCount: followersCount ?? this.followersCount,
@@ -74,6 +81,7 @@ class Profile {
       'homeTown': homeTown,
       'favoriteGames': favoriteGames,
       'avatarColor': avatarColor.toARGB32(),
+      'avatarImageBase64': avatarImageBase64,
       'following': following,
       'receivedLikes': receivedLikes,
       'followersCount': followersCount,
@@ -97,6 +105,7 @@ class Profile {
         favoriteGames: favoriteGames,
         avatarColor: Color((map['avatarColor'] as num?)?.toInt() ??
             Colors.blueAccent.toARGB32()),
+        avatarImageBase64: map['avatarImageBase64'] as String?,
         following: map['following'] as bool? ?? false,
         receivedLikes: (map['receivedLikes'] as num?)?.toInt() ?? 0,
         followersCount: (map['followersCount'] as num?)?.toInt() ?? 0,

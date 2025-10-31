@@ -42,6 +42,14 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
         'avatarColor': profile.avatarColor.value,
         'updatedAt': FieldValue.serverTimestamp(),
       };
+      final hasAvatarImage =
+          profile.avatarImageBase64?.trim().isNotEmpty ?? false;
+      if (hasAvatarImage) {
+        data['avatarImageBase64'] = profile.avatarImageBase64;
+      } else if (snapshot.exists &&
+          (snapshot.data()?['avatarImageBase64'] != null)) {
+        data['avatarImageBase64'] = FieldValue.delete();
+      }
       // Only write displayName if it's non-empty (avoid writing placeholder
       // defaults like empty string). This prevents creating many profiles with
       // a generic name when the user hasn't completed setup.
@@ -938,6 +946,7 @@ Profile _profileFromDocument(
     'homeTown': data['homeTown'] ?? '',
     'favoriteGames': favoriteGames,
     'avatarColor': (data['avatarColor'] as num?)?.toInt(),
+    'avatarImageBase64': data['avatarImageBase64'],
     'receivedLikes': (data['receivedLikes'] as num?)?.toInt() ?? 0,
     'followersCount': (data['followersCount'] as num?)?.toInt() ?? 0,
     'followingCount': (data['followingCount'] as num?)?.toInt() ?? 0,
@@ -953,6 +962,7 @@ Profile _profileFromDocument(
         favoriteGames: favoriteGames,
         avatarColor: Color(
             (data['avatarColor'] as num?)?.toInt() ?? Colors.blueAccent.value),
+        avatarImageBase64: data['avatarImageBase64'] as String?,
         receivedLikes: (data['receivedLikes'] as num?)?.toInt() ?? 0,
         followersCount: (data['followersCount'] as num?)?.toInt() ?? 0,
         followingCount: (data['followingCount'] as num?)?.toInt() ?? 0,
@@ -968,6 +978,7 @@ Map<String, dynamic> _profileSummary(Profile profile) {
     'homeTown': profile.homeTown,
     'favoriteGames': profile.favoriteGames,
     'avatarColor': profile.avatarColor.value,
+    'avatarImageBase64': profile.avatarImageBase64,
     'receivedLikes': profile.receivedLikes,
     'followersCount': profile.followersCount,
     'followingCount': profile.followingCount,

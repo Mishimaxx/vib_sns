@@ -25,6 +25,7 @@ class MockProfileInteractionService implements ProfileInteractionService {
     state.homeTown = profile.homeTown;
     state.favoriteGames = List<String>.from(profile.favoriteGames);
     state.avatarColorValue = profile.avatarColor.value;
+    state.avatarImageBase64 = profile.avatarImageBase64;
     state.followersCount = profile.followersCount;
     state.followingCount = profile.followingCount;
     state.receivedLikes = profile.receivedLikes;
@@ -157,18 +158,18 @@ class MockProfileInteractionService implements ProfileInteractionService {
     required String targetId,
     required String viewerId,
     required bool like,
-    }) async {
-      if (targetId.isEmpty || viewerId.isEmpty || targetId == viewerId) {
-        return;
-      }
-      final target = _getProfileState(targetId);
-      final likedBefore = target.likedBy.containsKey(viewerId);
+  }) async {
+    if (targetId.isEmpty || viewerId.isEmpty || targetId == viewerId) {
+      return;
+    }
+    final target = _getProfileState(targetId);
+    final likedBefore = target.likedBy.containsKey(viewerId);
 
-      if (like && !likedBefore) {
-        target.likedBy[viewerId] = DateTime.now();
-        target.receivedLikes += 1;
-      } else if (!like && likedBefore) {
-        target.likedBy.remove(viewerId);
+    if (like && !likedBefore) {
+      target.likedBy[viewerId] = DateTime.now();
+      target.receivedLikes += 1;
+    } else if (!like && likedBefore) {
+      target.likedBy.remove(viewerId);
       target.receivedLikes = max(0, target.receivedLikes - 1);
     }
 
@@ -506,6 +507,7 @@ class _MockProfileState {
   String homeTown = '';
   List<String> favoriteGames = const [];
   int avatarColorValue = 0;
+  String? avatarImageBase64;
   int followersCount = 0;
   int followingCount = 0;
   int receivedLikes = 0;
@@ -523,6 +525,7 @@ Profile _profileFromState(String id, _MockProfileState state) {
     homeTown: state.homeTown,
     favoriteGames: List<String>.from(state.favoriteGames),
     avatarColor: Color(state.avatarColorValue),
+    avatarImageBase64: state.avatarImageBase64,
     receivedLikes: state.receivedLikes,
     followersCount: state.followersCount,
     followingCount: state.followingCount,

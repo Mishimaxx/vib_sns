@@ -235,7 +235,11 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                         children: [
                           Row(
                             children: [
-                              ProfileAvatar(profile: _profile, radius: 38),
+                              ProfileAvatar(
+                                profile: _profile,
+                                radius: 38,
+                                showBorder: false,
+                              ),
                               const SizedBox(width: 18),
                               Expanded(
                                 child: Column(
