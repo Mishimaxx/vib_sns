@@ -182,9 +182,10 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
   @override
   Future<void> setLike({
     required String targetId,
-    required String viewerId,
+    required Profile viewerProfile,
     required bool like,
   }) async {
+    final viewerId = viewerProfile.id;
     if (targetId.isEmpty || viewerId.isEmpty || targetId == viewerId) {
       return;
     }
@@ -195,17 +196,30 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
 
     await _firestore.runTransaction((transaction) async {
       final targetSnap = await transaction.get(targetRef);
-      final viewerSnap = await transaction.get(viewerRef);
       final likeSnap = await transaction.get(likeRef);
       var likes = (targetSnap.data()?['receivedLikes'] as num?)?.toInt() ?? 0;
-      final viewerProfile =
-          _profileFromDocument(viewerSnap, fallbackId: viewerId);
+      Profile summaryProfile = viewerProfile;
+      try {
+        final viewerSnap = await transaction.get(viewerRef);
+        if (viewerSnap.exists) {
+          final stored = _profileFromDocument(viewerSnap, fallbackId: viewerId);
+          summaryProfile = stored.copyWith(
+            displayName: viewerProfile.displayName.isNotEmpty
+                ? viewerProfile.displayName
+                : stored.displayName,
+            avatarColor: viewerProfile.avatarColor,
+            avatarImageBase64: viewerProfile.avatarImageBase64,
+          );
+        }
+      } catch (_) {
+        // Ignore snapshot load failures; fall back to provided profile.
+      }
 
       if (like && !likeSnap.exists) {
         likes += 1;
         transaction.set(likeRef, {
           'createdAt': FieldValue.serverTimestamp(),
-          'profile': _profileSummary(viewerProfile),
+          'profile': _profileSummary(summaryProfile),
         });
         transaction.set(
             targetRef,

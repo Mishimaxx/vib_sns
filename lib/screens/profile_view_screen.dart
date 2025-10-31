@@ -146,6 +146,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   Future<void> _toggleLike() async {
     if (_isProcessingLike || widget.profileId == _viewerId) return;
     final service = context.read<ProfileInteractionService>();
+    final viewerProfile = context.read<ProfileController>().profile;
     final shouldLike = !_isLikedByViewer;
     setState(() {
       _isProcessingLike = true;
@@ -158,7 +159,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     try {
       await service.setLike(
         targetId: widget.profileId,
-        viewerId: _viewerId,
+        viewerProfile: viewerProfile,
         like: shouldLike,
       );
     } catch (error) {

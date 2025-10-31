@@ -65,7 +65,7 @@ abstract class ProfileInteractionService {
 
   Future<void> setLike({
     required String targetId,
-    required String viewerId,
+    required Profile viewerProfile,
     required bool like,
   });
 

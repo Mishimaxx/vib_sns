@@ -357,7 +357,7 @@ class EncounterManager extends ChangeNotifier {
     unawaited(service
         .setLike(
       targetId: encounter.profile.id,
-      viewerId: _localProfile.id,
+      viewerProfile: _localProfile,
       like: nextLiked,
     )
         .catchError((error, stackTrace) {

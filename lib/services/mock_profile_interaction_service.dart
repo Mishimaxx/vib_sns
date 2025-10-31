@@ -156,9 +156,10 @@ class MockProfileInteractionService implements ProfileInteractionService {
   @override
   Future<void> setLike({
     required String targetId,
-    required String viewerId,
+    required Profile viewerProfile,
     required bool like,
   }) async {
+    final viewerId = viewerProfile.id;
     if (targetId.isEmpty || viewerId.isEmpty || targetId == viewerId) {
       return;
     }

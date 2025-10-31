@@ -239,7 +239,23 @@ class NotificationManager extends ChangeNotifier {
     try {
       final fresh = await _interactionService.loadProfile(profile.id);
       if (fresh != null) {
-        return fresh.copyWith(following: isFollowedByViewer ?? fresh.following);
+        final fallbackName = profile.displayName.trim();
+        final currentName = fresh.displayName.trim();
+        final resolvedName = currentName.isNotEmpty && currentName != 'Unknown'
+            ? currentName
+            : (fallbackName.isNotEmpty && fallbackName != 'Unknown'
+                ? fallbackName
+                : currentName);
+        final resolvedAvatar =
+            (profile.avatarImageBase64?.trim().isNotEmpty ?? false)
+                ? profile.avatarImageBase64
+                : fresh.avatarImageBase64;
+        return fresh.copyWith(
+          displayName: resolvedName,
+          avatarImageBase64: resolvedAvatar,
+          avatarColor: profile.avatarColor,
+          following: isFollowedByViewer ?? fresh.following,
+        );
       }
     } catch (error) {
       debugPrint('通知プロフィールの取得に失敗: $error');
