@@ -23,6 +23,7 @@ dependencies:
   qr_flutter: ^4.1.0
   flutter_map: ^6.1.0
   latlong2: ^0.9.0
+  image_picker: ^1.0.7
 
 dev_dependencies:
   flutter_test:

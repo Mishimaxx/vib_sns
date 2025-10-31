@@ -2,10 +2,10 @@
   "name": "vib_sns_functions",
   "version": "0.1.0",
   "engines": {
-    "node": "18"
+    "node": "20"
   },
   "dependencies": {
-    "firebase-admin": "^11.0.0",
-    "firebase-functions": "^4.0.0"
+    "firebase-admin": "^13.5.0",
+    "firebase-functions": "^6.6.0"
   }
 }

@@ -23,6 +23,7 @@ import 'state/local_profile_loader.dart';
 import 'state/profile_controller.dart';
 import 'state/runtime_config.dart';
 import 'state/notification_manager.dart';
+import 'state/timeline_manager.dart';
 
 const _downloadUrl = String.fromEnvironment('DOWNLOAD_URL', defaultValue: '');
 
@@ -101,6 +102,7 @@ Future<void> main() async {
     interactionService: interactionService,
     localProfile: localProfile,
   );
+  final timelineManager = TimelineManager(profileController: profileController);
 
   try {
     if (kIsWeb) {
@@ -125,6 +127,7 @@ Future<void> main() async {
         usesMockBle: usesMockBle,
         downloadUrl: _downloadUrl,
       ),
+      timelineManager: timelineManager,
     ),
   );
 }
@@ -139,6 +142,7 @@ class VibSnsApp extends StatelessWidget {
     required this.profileController,
     required this.notificationManager,
     required this.runtimeConfig,
+    required this.timelineManager,
   });
 
   final StreetPassService streetPassService;
@@ -148,6 +152,7 @@ class VibSnsApp extends StatelessWidget {
   final ProfileController profileController;
   final NotificationManager notificationManager;
   final StreetPassRuntimeConfig runtimeConfig;
+  final TimelineManager timelineManager;
 
   @override
   Widget build(BuildContext context) {
@@ -157,6 +162,7 @@ class VibSnsApp extends StatelessWidget {
             value: profileController),
         ChangeNotifierProvider<NotificationManager>.value(
             value: notificationManager),
+        ChangeNotifierProvider<TimelineManager>.value(value: timelineManager),
         Provider<StreetPassRuntimeConfig>.value(value: runtimeConfig),
         Provider<ProfileInteractionService>(
           create: (_) => interactionService,

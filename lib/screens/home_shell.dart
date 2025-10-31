@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'download_qr_screen.dart';
 import 'encounter_list_screen.dart';
@@ -11,8 +14,11 @@ import '../state/encounter_manager.dart';
 import '../state/local_profile_loader.dart';
 import '../state/notification_manager.dart';
 import '../state/profile_controller.dart';
+import '../state/timeline_manager.dart';
 import 'profile_edit_screen.dart';
 import '../models/profile.dart';
+import '../models/encounter.dart';
+import '../models/timeline_post.dart';
 import '../widgets/profile_info_tile.dart';
 import '../widgets/profile_stats_row.dart';
 import 'profile_follow_list_sheet.dart';
@@ -128,7 +134,12 @@ class _TimelineScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = _HomePalette.fromTheme(theme);
-    final metrics = _computeMetrics(context.watch<EncounterManager>());
+    final encounterManager = context.watch<EncounterManager>();
+    final timelineManager = context.watch<TimelineManager>();
+    final metrics = _computeMetrics(encounterManager);
+    final feedItems =
+        _buildFeedItems(timelineManager.posts, encounterManager.encounters);
+
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(
@@ -149,50 +160,64 @@ class _TimelineScreen extends StatelessWidget {
         ],
       ),
       body: SafeArea(
-        child: Center(
+        child: Align(
+          alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '\u4eca\u65e5\u306e\u6c17\u914d',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: palette.onSurface.withValues(alpha: 0.6),
-                      letterSpacing: 1.4,
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              children: [
+                _HighlightsSection(
+                  palette: palette,
+                  metrics: metrics,
+                ),
+                const SizedBox(height: 28),
+                _TimelineComposer(timelineManager: timelineManager),
+                const SizedBox(height: 24),
+                if (feedItems.isEmpty)
+                  const _EmptyTimelineMessage()
+                else
+                  for (final item in feedItems)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 24),
+                      child: item.post != null
+                          ? _UserPostCard(
+                              post: item.post!,
+                              timelineManager: timelineManager,
+                            )
+                          : _EncounterPostCard(
+                              encounter: item.encounter!,
+                            ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '\u9759\u304b\u306a\u7a7a\u6c17\u306e\u4e2d\u3067\u3001\u4eca\u65e5\u306e\u51fa\u4f1a\u3044\u3092\u305d\u3063\u3068\u632f\u308a\u8fd4\u308a\u307e\u3059\u3002',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  Text(
-                    '\u4eca\u65e5\u306e\u30cf\u30a4\u30e9\u30a4\u30c8',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      letterSpacing: 1.1,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _HighlightsRow(
-                    palette: palette,
-                    metrics: metrics,
-                  ),
-                ],
-              ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+List<_TimelineFeedItem> _buildFeedItems(
+  List<TimelinePost> posts,
+  List<Encounter> encounters,
+) {
+  final items = <_TimelineFeedItem>[
+    for (final post in posts) _TimelineFeedItem(post: post),
+    for (final encounter in encounters) _TimelineFeedItem(encounter: encounter),
+  ];
+  items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  return items;
+}
+
+class _TimelineFeedItem {
+  _TimelineFeedItem({this.post, this.encounter})
+      : assert(post != null || encounter != null),
+        timestamp = post?.createdAt ?? encounter!.encounteredAt;
+
+  final TimelinePost? post;
+  final Encounter? encounter;
+  final DateTime timestamp;
 }
 
 _HomeMetrics _computeMetrics(EncounterManager manager) {
@@ -260,8 +285,8 @@ class _HomePalette {
   }
 }
 
-class _HighlightsRow extends StatelessWidget {
-  const _HighlightsRow({
+class _HighlightsSection extends StatelessWidget {
+  const _HighlightsSection({
     required this.palette,
     required this.metrics,
   });
@@ -271,6 +296,7 @@ class _HighlightsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final tiles = <Widget>[
       _HighlightTile(
         label: '\u3059\u308c\u9055\u3044\u4eba\u6570',
@@ -292,19 +318,44 @@ class _HighlightsRow extends StatelessWidget {
       ),
     ];
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
-      child: Row(
-        children: [
-          const SizedBox(width: 4),
-          for (var i = 0; i < tiles.length; i++) ...[
-            tiles[i],
-            if (i != tiles.length - 1) const SizedBox(width: 16),
-          ],
-          const SizedBox(width: 4),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '\u4eca\u65e5\u306e\u30cf\u30a4\u30e9\u30a4\u30c8',
+          style: theme.textTheme.titleMedium?.copyWith(
+            letterSpacing: 1.1,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final availableWidth =
+                constraints.maxWidth <= 0 ? 320.0 : constraints.maxWidth;
+            final columns = availableWidth >= 640
+                ? 3
+                : availableWidth >= 420
+                    ? 2
+                    : 1;
+            const spacing = 12.0;
+            final itemWidth = columns == 1
+                ? availableWidth
+                : (availableWidth - (columns - 1) * spacing) / columns;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final tile in tiles)
+                  SizedBox(
+                    width: itemWidth,
+                    child: tile,
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -326,7 +377,7 @@ class _HighlightTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      constraints: const BoxConstraints(minWidth: 150),
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.07),
@@ -356,6 +407,487 @@ class _HighlightTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TimelineComposer extends StatefulWidget {
+  const _TimelineComposer({required this.timelineManager});
+
+  final TimelineManager timelineManager;
+
+  @override
+  State<_TimelineComposer> createState() => _TimelineComposerState();
+}
+
+class _TimelineComposerState extends State<_TimelineComposer> {
+  final TextEditingController _controller = TextEditingController();
+  Uint8List? _imageBytes;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1440,
+      );
+      if (picked == null) {
+        return;
+      }
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      setState(() => _imageBytes = bytes);
+    } catch (_) {
+      if (!mounted) return;
+      _showSnack(
+          '\u753b\u50cf\u3092\u8aad\u307f\u8fbc\u3081\u307e\u305b\u3093\u3067\u3057\u305f\u3002');
+    }
+  }
+
+  Future<void> _submit() async {
+    final caption = _controller.text.trim();
+    final hasImage = _imageBytes != null && _imageBytes!.isNotEmpty;
+    if (caption.isEmpty && !hasImage) {
+      _showSnack(
+          '\u30c6\u30ad\u30b9\u30c8\u304b\u753b\u50cf\u3092\u8ffd\u52a0\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      await widget.timelineManager.addPost(
+        caption: caption,
+        imageBytes: _imageBytes,
+      );
+      if (!mounted) return;
+      _controller.clear();
+      setState(() {
+        _imageBytes = null;
+      });
+      FocusScope.of(context).unfocus();
+      _showSnack('\u6295\u7a3f\u3057\u307e\u3057\u305f\u3002');
+    } catch (_) {
+      if (!mounted) return;
+      _showSnack(
+          '\u6295\u7a3f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002');
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  void _removeImage() {
+    setState(() => _imageBytes = null);
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '\u4eca\u306e\u77ac\u9593\u3092\u30b7\u30a7\u30a2',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText:
+                    '\u4eca\u306e\u6c17\u6301\u3061\u3084\u3082\u3088\u3044\u3092\u5171\u6709...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_imageBytes != null) ...[
+              const SizedBox(height: 12),
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.memory(
+                      _imageBytes!,
+                      height: 220,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: IconButton.filled(
+                      onPressed: _removeImage,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: _submitting ? null : _pickImage,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('\u753b\u50cf\u3092\u3048\u3089\u3076'),
+                ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: _submitting ? null : _submit,
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('\u30b7\u30a7\u30a2'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UserPostCard extends StatelessWidget {
+  const _UserPostCard({
+    required this.post,
+    required this.timelineManager,
+  });
+
+  final TimelinePost post;
+  final TimelineManager timelineManager;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final imageBytes = post.decodeImage();
+    final likeLabel = post.likeCount > 0
+        ? '${post.likeCount}\u4ef6\u306e\u3044\u3044\u306d'
+        : '\u307e\u3060\u3044\u3044\u306d\u306f\u3042\u308a\u307e\u305b\u3093';
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 0,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _TimelineCardHeader(
+            title: post.authorName,
+            subtitle: _relativeTime(post.createdAt),
+            color: post.authorColor,
+          ),
+          if (imageBytes != null) _TimelineImage(bytes: imageBytes),
+          if (post.caption.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Text(
+                post.caption,
+                style: theme.textTheme.bodyLarge,
+              ),
+            ),
+          _TimelineActions(
+            isLiked: post.isLiked,
+            likeLabel: likeLabel,
+            onLike: () => timelineManager.toggleLike(post.id),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EncounterPostCard extends StatelessWidget {
+  const _EncounterPostCard({required this.encounter});
+
+  final Encounter encounter;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final profile = encounter.profile;
+    final caption = (encounter.message?.trim().isNotEmpty ?? false)
+        ? encounter.message!.trim()
+        : '${profile.displayName}\u3068\u306e\u65b0\u3057\u3044\u51fa\u4f1a\u3092\u8a18\u9332\u3057\u307e\u3057\u305f\u3002';
+    final distance = encounter.displayDistance;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 0,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _TimelineCardHeader(
+            title: profile.displayName,
+            subtitle: _relativeTime(encounter.encounteredAt),
+            color: profile.avatarColor,
+          ),
+          _EncounterImage(profile: profile),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  caption,
+                  style: theme.textTheme.bodyLarge,
+                ),
+                if (distance != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '\u63a8\u5b9a\u8ddd\u96e2: ${distance.toStringAsFixed(1)}m',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          _TimelineActions(
+            isLiked: encounter.liked,
+            likeLabel: encounter.liked
+                ? '\u3044\u3044\u306d\u3057\u307e\u3057\u305f'
+                : '\u3059\u308c\u9055\u3044\u306b\u3044\u3044\u306d',
+            onLike: () =>
+                context.read<EncounterManager>().toggleLike(encounter.id),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineCardHeader extends StatelessWidget {
+  const _TimelineCardHeader({
+    required this.title,
+    required this.subtitle,
+    required this.color,
+  });
+
+  final String title;
+  final String subtitle;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final trimmedTitle = title.trim().isEmpty ? '\u533f\u540d' : title.trim();
+    final initial = trimmedTitle.characters.first.toUpperCase();
+    return ListTile(
+      leading: CircleAvatar(
+        radius: 24,
+        backgroundColor: color,
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+      ),
+      title: Text(
+        trimmedTitle,
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    );
+  }
+}
+
+class _TimelineActions extends StatelessWidget {
+  const _TimelineActions({
+    required this.isLiked,
+    required this.likeLabel,
+    required this.onLike,
+  });
+
+  final bool isLiked;
+  final String likeLabel;
+  final VoidCallback onLike;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onLike,
+            icon: Icon(
+              isLiked ? Icons.favorite : Icons.favorite_border,
+              color: isLiked
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              likeLabel,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineImage extends StatelessWidget {
+  const _TimelineImage({required this.bytes});
+
+  final Uint8List bytes;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 4 / 5,
+      child: Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey.shade200,
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.image_not_supported_outlined,
+            size: 48,
+            color: Colors.black38,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EncounterImage extends StatelessWidget {
+  const _EncounterImage({required this.profile});
+
+  final Profile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = profile.avatarColor;
+    final details = profile.favoriteGames.isNotEmpty
+        ? profile.favoriteGames.first
+        : profile.homeTown;
+    return AspectRatio(
+      aspectRatio: 4 / 5,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              accent.withValues(alpha: 0.9),
+              accent.withValues(alpha: 0.6),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Stack(
+          children: [
+            Align(
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.people_alt_rounded,
+                size: 72,
+                color: Colors.white.withValues(alpha: 0.88),
+              ),
+            ),
+            Positioned(
+              left: 20,
+              bottom: 20,
+              right: 20,
+              child: Text(
+                details.isEmpty
+                    ? '\u65b0\u3057\u3044\u3059\u308c\u9055\u3044\u3092\u8a18\u9332'
+                    : details,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyTimelineMessage extends StatelessWidget {
+  const _EmptyTimelineMessage();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 48,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '\u307e\u3060\u30bf\u30a4\u30e0\u30e9\u30a4\u30f3\u306b\u306f\u6295\u7a3f\u304c\u3042\u308a\u307e\u305b\u3093\u3002\n\u6700\u521d\u306e\u77ac\u9593\u3092\u30b7\u30a7\u30a2\u3057\u3066\u307f\u307e\u3057\u3087\u3046\uff01',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyLarge,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _relativeTime(DateTime time) {
+  final diff = DateTime.now().difference(time);
+  if (diff.inMinutes < 1) return '\u305f\u3063\u305f\u4eca';
+  if (diff.inHours < 1) return '${diff.inMinutes}\u5206\u524d';
+  if (diff.inHours < 24) return '${diff.inHours}\u6642\u9593\u524d';
+  return '${diff.inDays}\u65e5\u524d';
 }
 
 class _ProfileScreen extends StatefulWidget {
