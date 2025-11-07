@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -16,14 +20,90 @@ class EmotionMap extends StatefulWidget {
 
 const LatLng _defaultCenter = LatLng(35.681236, 139.767125);
 
+const Map<String, List<String>> _botMemosByEmotion = {
+  'happy': [
+    '散歩中に犬に会えた！',
+    'カフェのケーキが最高だった',
+    '久しぶりに友達と会えた',
+    '良い天気で気分いい',
+    '素敵な場所を見つけた',
+    '今日はいい日だ',
+  ],
+  'sad': [
+    '雨降ってきちゃった',
+    '電車乗り過ごした...',
+    '財布忘れて取りに戻った',
+    'なんだか寂しい気分',
+    '疲れたなぁ',
+    '気分が沈む',
+  ],
+};
+
+const double _memoMinInnerWidth = 40;
+const double _memoMaxInnerWidth = 360;
+const double _memoWidthStep = 18;
+
+const _BotStaticSpot _tokyoDomeSpot = _BotStaticSpot(
+  id: 'tokyo_dome',
+  center: LatLng(35.705639, 139.751891),
+  radiusMeters: 400,
+  count: 30,
+);
+
+const _BotStaticSpot _tokyoBigSightSpot = _BotStaticSpot(
+  id: 'tokyo_big_sight',
+  center: LatLng(35.6298, 139.7976),
+  radiusMeters: 400,
+  count: 30,
+);
+
+const List<_BotStaticSpot> _botStaticSpots = [
+  _tokyoDomeSpot,
+  _tokyoBigSightSpot,
+];
+
 class _EmotionMapState extends State<EmotionMap> {
   final MapController _mapController = MapController();
+  final Random _random = Random();
   bool _mapReady = false;
   bool _isLocating = false;
   bool _isPosting = false;
   bool _centeredOnUserOnce = false;
   LatLng? _userLocation;
   String _lastPostSignature = '';
+  StreamSubscription<MapEvent>? _mapEventSub;
+  double _currentZoom = 14;
+  List<EmotionMapPost> _botPosts = const [];
+  Timer? _botMemoTimer;
+  Set<String> _visibleBotMemoIds = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _mapEventSub = _mapController.mapEventStream.listen((event) {
+      final zoom = event.camera.zoom;
+      if (zoom.isNaN) return;
+      if ((zoom - _currentZoom).abs() < 0.01) return;
+      if (mounted) {
+        setState(() {
+          _currentZoom = zoom;
+        });
+      } else {
+        _currentZoom = zoom;
+      }
+    });
+    _botMemoTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _rotateBotMemoVisibility(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _mapEventSub?.cancel();
+    _botMemoTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,8 +112,13 @@ class _EmotionMapState extends State<EmotionMap> {
     final userLocation = _userLocation;
 
     final markers = posts
-        .map((post) => _buildEmotionMarker(context, post))
-        .toList(growable: true);
+        .map((post) => _buildEmotionMarker(context, post, isBot: false))
+        .toList(growable: true)
+      ..addAll(
+        _botPosts.map(
+          (post) => _buildEmotionMarker(context, post, isBot: true),
+        ),
+      );
     if (userLocation != null) {
       markers.add(_buildUserMarker(userLocation));
     }
@@ -123,18 +208,90 @@ class _EmotionMapState extends State<EmotionMap> {
     );
   }
 
-  Marker _buildEmotionMarker(BuildContext context, EmotionMapPost post) {
+  Marker _buildEmotionMarker(
+    BuildContext context,
+    EmotionMapPost post, {
+    required bool isBot,
+  }) {
     final emotion = post.emotion;
+    const baseWidth = 40.0;
+    final scale = _markerScaleForZoom(_currentZoom);
+    final visualScale = scale.clamp(0.75, 1.0);
+    final labelStyle = TextStyle(
+      fontSize: 11 * visualScale,
+      fontWeight: FontWeight.w600,
+      height: 1.25,
+    );
+    final showMemo = !isBot || _visibleBotMemoIds.contains(post.id);
+    const memoSpacing = 4.0;
+    const memoPaddingV = 4.0;
+    const memoPaddingH = 10.0;
+    // スタンプが動かないように、常にメモレイアウトを計算
+    final memoLayout = _resolveMemoBubbleLayout(
+      text: post.displayMessage,
+      style: labelStyle,
+      spacing: memoSpacing * scale,
+      paddingVertical: memoPaddingV * scale,
+      paddingHorizontal: memoPaddingH * scale,
+      minInnerWidth: _memoMinInnerWidth * scale,
+      maxInnerWidth: _memoMaxInnerWidth * scale,
+      widthStep: _memoWidthStep * scale,
+    );
+    const circlePadding = 11.0;
+    const emojiSize = 18.0;
+    const spacing = memoSpacing;
+    final circleHeight = (circlePadding * 2 + emojiSize) * scale;
+    // 常にメモがある時の幅と高さを確保（メモの表示/非表示に関わらず）
+    final width = max(baseWidth * scale, memoLayout.outerWidth);
+    // memoLayout.height + SizedBoxのspacing + circleHeight + 余裕
+    final height = memoLayout.height + (spacing * scale) + circleHeight + (20 * scale);
+
+    // 円マーカーの中心を地図座標に固定
+    final circleCenterFromBottom = (circlePadding + emojiSize / 2) * scale;
+    final alignmentY = 1.0 - 2.0 * circleCenterFromBottom / height;
+
     return Marker(
       point: LatLng(post.latitude, post.longitude),
-      width: 60,
-      height: 110,
-      alignment: Alignment.topCenter,
+      width: width,
+      height: height,
+      alignment: Alignment(0, alignmentY),
       child: GestureDetector(
-        onTap: () => _showPostDetails(post),
+        onTap: () => _showPostDetails(post, canDelete: !isBot),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            if (showMemo) ...[
+              Container(
+                padding: EdgeInsets.symmetric(
+                  vertical: memoPaddingV * scale,
+                  horizontal: memoPaddingH * scale,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12 * scale),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 6 * scale,
+                      offset: Offset(0, 2 * scale),
+                    ),
+                  ],
+                ),
+                child: SizedBox(
+                  width: memoLayout.innerWidth,
+                  child: Text(
+                    post.displayMessage,
+                    softWrap: true,
+                    maxLines: 2,
+                    overflow: TextOverflow.fade,
+                    style: labelStyle,
+                  ),
+                ),
+              ),
+              SizedBox(height: spacing * scale),
+            ],
             Container(
               decoration: BoxDecoration(
                 color: emotion.color,
@@ -142,37 +299,15 @@ class _EmotionMapState extends State<EmotionMap> {
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.18),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
+                    blurRadius: 10 * scale,
+                    offset: Offset(0, 4 * scale),
                   ),
                 ],
               ),
-              padding: const EdgeInsets.all(14),
+              padding: EdgeInsets.all(circlePadding * scale),
               child: Text(
                 emotion.emoji,
-                style: const TextStyle(fontSize: 22),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Text(
-                post.emotion.label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: emojiSize * scale),
               ),
             ),
           ],
@@ -182,30 +317,35 @@ class _EmotionMapState extends State<EmotionMap> {
   }
 
   Marker _buildUserMarker(LatLng position) {
+    const baseSize = 40.0;
+    final scale = _markerScaleForZoom(_currentZoom);
+    final size = baseSize * scale;
+    final borderWidth = 2 * scale.clamp(0.7, 1.0);
     return Marker(
       point: position,
-      width: 56,
-      height: 56,
-      alignment: Alignment.center,
+      width: size,
+      height: size,
+      alignment: Alignment.bottomCenter,
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: const Color(0xFF1E88E5),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF1E88E5).withValues(alpha: 0.4),
-              blurRadius: 20,
-              spreadRadius: 2,
+              color: const Color(0xFF1E88E5).withValues(alpha: 0.35),
+              blurRadius: 16 * scale,
+              spreadRadius: 1,
             ),
           ],
           border: Border.all(
             color: Colors.white,
-            width: 3,
+            width: borderWidth,
           ),
         ),
-        child: const Icon(
+        child: Icon(
           Icons.person_pin_circle,
           color: Colors.white,
+          size: 20 * scale.clamp(0.7, 1.0),
         ),
       ),
     );
@@ -301,6 +441,7 @@ class _EmotionMapState extends State<EmotionMap> {
           _userLocation = latLng;
         });
       }
+      _generateBotPostsAround(latLng);
       if (moveCamera) {
         final currentZoom = _mapController.camera.zoom;
         final targetZoom =
@@ -331,6 +472,9 @@ class _EmotionMapState extends State<EmotionMap> {
       if (_userLocation != null) _userLocation!,
       ...posts.map((post) => LatLng(post.latitude, post.longitude)),
     ];
+    if (points.isNotEmpty) {
+      _generateBotPostsAround(points.first);
+    }
     if (points.isEmpty) {
       _mapController.move(_defaultCenter, 12);
       return;
@@ -363,17 +507,21 @@ class _EmotionMapState extends State<EmotionMap> {
     return true;
   }
 
-  Future<void> _showPostDetails(EmotionMapPost post) async {
+  Future<void> _showPostDetails(EmotionMapPost post,
+      {required bool canDelete}) async {
     await showModalBottomSheet<void>(
       context: context,
       builder: (context) {
         return _EmotionPostDetailSheet(
           post: post,
-          onDelete: () {
-            context.read<EmotionMapManager>().removePost(post.id);
-            Navigator.of(context).pop();
-            _showSnack('投稿を削除しました。');
-          },
+          canDelete: canDelete,
+          onDelete: canDelete
+              ? () {
+                  context.read<EmotionMapManager>().removePost(post.id);
+                  Navigator.of(context).pop();
+                  _showSnack('投稿を削除しました。');
+                }
+              : null,
         );
       },
     );
@@ -391,6 +539,233 @@ class _EmotionMapState extends State<EmotionMap> {
     }
     return posts.map((post) => post.id).join('|');
   }
+
+  String _randomBotMemo(EmotionType emotion) {
+    final memos = _botMemosByEmotion[emotion.id];
+    if (memos == null || memos.isEmpty) {
+      return '${emotion.label}な気分';
+    }
+    return memos[_random.nextInt(memos.length)];
+  }
+
+  void _rotateBotMemoVisibility() {
+    if (_botPosts.isEmpty) {
+      _updateVisibleMemoIds(<String>{});
+      return;
+    }
+    final targetCount = max(1, (_botPosts.length / 3).round());
+    final shuffled = List<EmotionMapPost>.from(_botPosts)..shuffle(_random);
+    final nextIds =
+        shuffled.take(targetCount).map((post) => post.id).toSet();
+    _updateVisibleMemoIds(nextIds);
+  }
+
+  void _updateVisibleMemoIds(Set<String> nextIds) {
+    if (setEquals(nextIds, _visibleBotMemoIds)) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _visibleBotMemoIds = nextIds;
+      });
+    } else {
+      _visibleBotMemoIds = nextIds;
+    }
+  }
+
+  double _markerScaleForZoom(double zoom) {
+    const minZoom = 10.0;
+    const maxZoom = 18.0;
+    const minScale = 0.55;
+    const maxScale = 1.0;
+    final clampedZoom = zoom.clamp(minZoom, maxZoom);
+    final t = (clampedZoom - minZoom) / (maxZoom - minZoom);
+    return minScale + (maxScale - minScale) * t;
+  }
+
+  _MemoBubbleLayout _resolveMemoBubbleLayout({
+    required String text,
+    required TextStyle style,
+    required double spacing,
+    required double paddingVertical,
+    required double paddingHorizontal,
+    required double minInnerWidth,
+    required double maxInnerWidth,
+    required double widthStep,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+    );
+    double innerWidth = minInnerWidth;
+    while (true) {
+      painter.layout(maxWidth: innerWidth);
+      if (!painter.didExceedMaxLines || innerWidth >= maxInnerWidth) {
+        final outerWidth = innerWidth + paddingHorizontal * 2;
+        final height = spacing + paddingVertical * 2 + painter.height;
+        return _MemoBubbleLayout(
+          outerWidth: outerWidth,
+          innerWidth: innerWidth,
+          height: height,
+        );
+      }
+      innerWidth = min(innerWidth + widthStep, maxInnerWidth);
+    }
+  }
+
+  void _generateBotPostsAround(LatLng origin, {bool force = false}) {
+    // Bot投稿は一度生成したら固定（再生成しない）
+    if (!force && _botPosts.isNotEmpty) {
+      return;
+    }
+    const botCount = 15;
+    const radiusMeters = 2000.0;
+    const minSeparationMeters = 120.0;
+    final bots = <EmotionMapPost>[];
+    final now = DateTime.now();
+    var attempts = 0;
+    while (bots.length < botCount && attempts < botCount * 20) {
+      attempts++;
+      final distance = sqrt(_random.nextDouble()) * radiusMeters;
+      final bearing = _random.nextDouble() * 2 * pi;
+      final position = _offsetBy(origin, distance, bearing);
+      final hasNearbyBot = bots.any(
+        (existing) =>
+            _distanceMeters(
+              LatLng(existing.latitude, existing.longitude),
+              position,
+            ) <
+            minSeparationMeters,
+      );
+      if (hasNearbyBot) {
+        continue;
+      }
+      // 利用可能な感情は「うれしい」と「かなしい」の2種類のみ
+      const availableEmotions = [EmotionType.happy, EmotionType.sad];
+      final emotion = availableEmotions[_random.nextInt(availableEmotions.length)];
+      final ageMinutes = _random.nextInt(6 * 60); // within last 6 hours
+      final post = EmotionMapPost(
+        id:
+            'bot_${now.microsecondsSinceEpoch}_${bots.length}_${_random.nextInt(1 << 16)}',
+        emotion: emotion,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        createdAt: now.subtract(Duration(minutes: ageMinutes)),
+        message: _randomBotMemo(emotion),
+      );
+      bots.add(post);
+    }
+    for (final spot in _botStaticSpots) {
+      _populateStaticSpotBots(
+        bots: bots,
+        spot: spot,
+        now: now,
+      );
+    }
+    if (mounted) {
+      setState(() {
+        _botPosts = bots;
+      });
+    } else {
+      _botPosts = bots;
+    }
+    _rotateBotMemoVisibility();
+  }
+
+  double _distanceMeters(LatLng a, LatLng b) {
+    const earthRadius = 6378137.0;
+    final dLat = _degToRad(b.latitude - a.latitude);
+    final dLon = _degToRad(b.longitude - a.longitude);
+    final lat1 = _degToRad(a.latitude);
+    final lat2 = _degToRad(b.latitude);
+    final h = pow(sin(dLat / 2), 2) +
+        cos(lat1) * cos(lat2) * pow(sin(dLon / 2), 2);
+    final c = 2 * atan2(sqrt(h), sqrt(1 - h));
+    return earthRadius * c;
+  }
+
+  LatLng _offsetBy(LatLng origin, double distanceMeters, double bearing) {
+    const earthRadius = 6378137.0;
+    final latRad = _degToRad(origin.latitude);
+    final lonRad = _degToRad(origin.longitude);
+    final angular = distanceMeters / earthRadius;
+    final nextLat = asin(sin(latRad) * cos(angular) +
+        cos(latRad) * sin(angular) * cos(bearing));
+    final nextLon = lonRad +
+        atan2(
+            sin(bearing) * sin(angular) * cos(latRad),
+            cos(angular) - sin(latRad) * sin(nextLat));
+    return LatLng(_radToDeg(nextLat), _radToDeg(nextLon));
+  }
+
+  double _degToRad(double value) => value * pi / 180;
+  double _radToDeg(double value) => value * 180 / pi;
+
+  void _populateStaticSpotBots({
+    required List<EmotionMapPost> bots,
+    required _BotStaticSpot spot,
+    required DateTime now,
+  }) {
+    var generated = 0;
+    var attempts = 0;
+    while (generated < spot.count && attempts < spot.count * 20) {
+      attempts++;
+      final distance = sqrt(_random.nextDouble()) * spot.radiusMeters;
+      final bearing = _random.nextDouble() * 2 * pi;
+      final position = _offsetBy(spot.center, distance, bearing);
+      final hasNearby = bots.any(
+        (existing) =>
+            _distanceMeters(
+              LatLng(existing.latitude, existing.longitude),
+              position,
+            ) <
+            40,
+      );
+      if (hasNearby) continue;
+      final emotion =
+          _random.nextDouble() < 0.95 ? EmotionType.happy : EmotionType.sad;
+      final ageMinutes = _random.nextInt(6 * 60);
+      bots.add(
+        EmotionMapPost(
+          id:
+              'bot_static_${spot.id}_${generated}_${now.microsecondsSinceEpoch}_${_random.nextInt(1 << 16)}',
+          emotion: emotion,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          createdAt: now.subtract(Duration(minutes: ageMinutes)),
+          message: _randomBotMemo(emotion),
+        ),
+      );
+      generated++;
+    }
+  }
+}
+
+class _MemoBubbleLayout {
+  const _MemoBubbleLayout({
+    required this.outerWidth,
+    required this.innerWidth,
+    required this.height,
+  });
+
+  final double outerWidth;
+  final double innerWidth;
+  final double height;
+}
+
+class _BotStaticSpot {
+  const _BotStaticSpot({
+    required this.id,
+    required this.center,
+    required this.radiusMeters,
+    required this.count,
+  });
+
+  final String id;
+  final LatLng center;
+  final double radiusMeters;
+  final int count;
 }
 
 class _EmotionFormResult {
@@ -459,7 +834,7 @@ class _EmotionPostSheetState extends State<_EmotionPostSheet> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: EmotionType.values.map((emotion) {
+                      children: const [EmotionType.happy, EmotionType.sad].map((emotion) {
                         final selected = _selectedEmotion == emotion;
                         return ChoiceChip(
                           label: Text('${emotion.emoji} ${emotion.label}'),
@@ -473,7 +848,7 @@ class _EmotionPostSheetState extends State<_EmotionPostSheet> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _controller,
-                      maxLength: 120,
+                      maxLength: 60,
                       maxLines: 3,
                       decoration: const InputDecoration(
                         labelText: 'ひとことメモ（任意）',
@@ -519,11 +894,13 @@ class _EmotionPostSheetState extends State<_EmotionPostSheet> {
 class _EmotionPostDetailSheet extends StatelessWidget {
   const _EmotionPostDetailSheet({
     required this.post,
-    required this.onDelete,
+    required this.canDelete,
+    this.onDelete,
   });
 
   final EmotionMapPost post;
-  final VoidCallback onDelete;
+  final bool canDelete;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -570,11 +947,12 @@ class _EmotionPostDetailSheet extends StatelessWidget {
                   ],
                 ),
                 const Spacer(),
-                IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: '削除',
-                ),
+                if (canDelete)
+                  IconButton(
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: '削除',
+                  ),
               ],
             ),
             const SizedBox(height: 16),
