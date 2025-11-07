@@ -99,6 +99,7 @@ class EmotionMapPost {
     required this.longitude,
     required this.createdAt,
     this.message,
+    this.profileId,
   });
 
   final String id;
@@ -107,6 +108,7 @@ class EmotionMapPost {
   final double longitude;
   final DateTime createdAt;
   final String? message;
+  final String? profileId;
 
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
@@ -116,6 +118,7 @@ class EmotionMapPost {
       'longitude': longitude,
       'createdAt': createdAt.toIso8601String(),
       if (message != null && message!.isNotEmpty) 'message': message,
+      if (profileId != null && profileId!.isNotEmpty) 'profileId': profileId,
     };
   }
 
@@ -144,6 +147,7 @@ class EmotionMapPost {
       longitude: longitude.toDouble(),
       createdAt: createdAt,
       message: map['message'] as String?,
+      profileId: map['profileId'] as String?,
     );
   }
 

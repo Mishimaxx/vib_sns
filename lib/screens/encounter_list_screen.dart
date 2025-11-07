@@ -82,13 +82,7 @@ class _EncounterListScreenState extends State<EncounterListScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('\u3059\u308c\u9055\u3044\u30ed\u30b0'),
-          actions: [
-            IconButton(
-              onPressed: _handleScanPressed,
-              icon: const Icon(Icons.wifi_tethering),
-              tooltip: '\u3059\u308c\u9055\u3044\u691c\u7d22',
-            ),
-          ],
+          actions: const [],
           bottom: const TabBar(
             tabs: [
               Tab(
