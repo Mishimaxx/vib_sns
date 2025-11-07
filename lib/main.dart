@@ -19,6 +19,7 @@ import 'services/mock_streetpass_service.dart';
 import 'services/profile_interaction_service.dart';
 import 'services/streetpass_service.dart';
 import 'state/encounter_manager.dart';
+import 'state/emotion_map_manager.dart';
 import 'state/local_profile_loader.dart';
 import 'state/profile_controller.dart';
 import 'state/runtime_config.dart';
@@ -103,6 +104,8 @@ Future<void> main() async {
     localProfile: localProfile,
   );
   final timelineManager = TimelineManager(profileController: profileController);
+  final emotionMapManager =
+      EmotionMapManager(profileController: profileController);
 
   try {
     if (kIsWeb) {
@@ -128,6 +131,7 @@ Future<void> main() async {
         downloadUrl: _downloadUrl,
       ),
       timelineManager: timelineManager,
+      emotionMapManager: emotionMapManager,
     ),
   );
 }
@@ -143,6 +147,7 @@ class VibSnsApp extends StatelessWidget {
     required this.notificationManager,
     required this.runtimeConfig,
     required this.timelineManager,
+    required this.emotionMapManager,
   });
 
   final StreetPassService streetPassService;
@@ -153,6 +158,7 @@ class VibSnsApp extends StatelessWidget {
   final NotificationManager notificationManager;
   final StreetPassRuntimeConfig runtimeConfig;
   final TimelineManager timelineManager;
+  final EmotionMapManager emotionMapManager;
 
   @override
   Widget build(BuildContext context) {
@@ -163,6 +169,8 @@ class VibSnsApp extends StatelessWidget {
         ChangeNotifierProvider<NotificationManager>.value(
             value: notificationManager),
         ChangeNotifierProvider<TimelineManager>.value(value: timelineManager),
+        ChangeNotifierProvider<EmotionMapManager>.value(
+            value: emotionMapManager),
         Provider<StreetPassRuntimeConfig>.value(value: runtimeConfig),
         Provider<ProfileInteractionService>(
           create: (_) => interactionService,

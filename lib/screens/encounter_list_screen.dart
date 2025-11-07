@@ -5,7 +5,7 @@ import '../models/encounter.dart';
 import '../services/streetpass_service.dart';
 import '../state/encounter_manager.dart';
 import '../state/runtime_config.dart';
-import '../widgets/encounter_map.dart';
+import '../widgets/emotion_map.dart';
 import '../widgets/like_button.dart';
 import '../widgets/profile_avatar.dart';
 import 'encounter_detail_screen.dart';
@@ -161,19 +161,8 @@ class _EncounterListScreenState extends State<EncounterListScreen> {
             final mapTab = Column(
               children: [
                 ...buildBanners(),
-                Expanded(
-                  child: EncounterMap(
-                    encounters: encounters,
-                    onMarkerTap: (encounter) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => EncounterDetailScreen(
-                            encounterId: encounter.id,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                const Expanded(
+                  child: EmotionMap(),
                 ),
               ],
             );
