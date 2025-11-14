@@ -28,6 +28,40 @@ class ProfileFollowListSheet extends StatefulWidget {
 
 class _ProfileFollowListSheetState extends State<ProfileFollowListSheet> {
   final Set<String> _pending = <String>{};
+  List<ProfileFollowSnapshot>? _initialItems;
+  bool _initialLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitial();
+  }
+
+  Future<void> _loadInitial() async {
+    setState(() => _initialLoading = true);
+    final service = context.read<ProfileInteractionService>();
+    try {
+      final items = widget.mode == ProfileFollowSheetMode.followers
+          ? await service.loadFollowersOnce(
+              targetId: widget.targetId,
+              viewerId: widget.viewerId,
+            )
+          : await service.loadFollowingOnce(
+              targetId: widget.targetId,
+              viewerId: widget.viewerId,
+            );
+      if (!mounted) return;
+      setState(() {
+        _initialItems = items;
+      });
+    } catch (_) {
+      // ignore; live stream will surface errors
+    } finally {
+      if (mounted) {
+        setState(() => _initialLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,13 +94,18 @@ class _ProfileFollowListSheetState extends State<ProfileFollowListSheet> {
                 ),
               );
             }
-            if (!snapshot.hasData) {
+            final streamItems = snapshot.data ?? const <ProfileFollowSnapshot>[];
+            final items = streamItems.isNotEmpty
+                ? streamItems
+                : (_initialItems ?? const <ProfileFollowSnapshot>[]);
+            final isLoading =
+                (streamItems.isEmpty && _initialItems == null) || _initialLoading;
+            if (isLoading) {
               return const SizedBox(
                 height: 240,
                 child: Center(child: CircularProgressIndicator()),
               );
             }
-            final items = snapshot.data ?? const <ProfileFollowSnapshot>[];
             if (items.isEmpty) {
               final emptyMessage =
                   widget.mode == ProfileFollowSheetMode.followers

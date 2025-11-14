@@ -321,6 +321,74 @@ class FirestoreProfileInteractionService implements ProfileInteractionService {
   }
 
   @override
+  Future<List<ProfileFollowSnapshot>> loadFollowersOnce({
+    required String targetId,
+    required String viewerId,
+  }) {
+    return _fetchRelationSnapshots(
+      targetId: targetId,
+      viewerId: viewerId,
+      type: _RelationType.followers,
+    );
+  }
+
+  @override
+  Future<List<ProfileFollowSnapshot>> loadFollowingOnce({
+    required String targetId,
+    required String viewerId,
+  }) {
+    return _fetchRelationSnapshots(
+      targetId: targetId,
+      viewerId: viewerId,
+      type: _RelationType.following,
+    );
+  }
+
+  Future<List<ProfileFollowSnapshot>> _fetchRelationSnapshots({
+    required String targetId,
+    required String viewerId,
+    required _RelationType type,
+  }) async {
+    final profiles =
+        _firestore.collection(FirestoreProfileInteractionService._profilesCollection);
+    final docRef = profiles.doc(targetId);
+    final collectionName =
+        type == _RelationType.followers ? 'followers' : 'following';
+    final query = await docRef.collection(collectionName).get();
+    final entries = <_RelationEntry>[];
+    for (final doc in query.docs) {
+      final entry = await _buildRelationEntry(_firestore, doc);
+      if (entry != null) {
+        entries.add(entry);
+      }
+    }
+    entries.sort((a, b) {
+      final left = a.followedAt?.millisecondsSinceEpoch ?? 0;
+      final right = b.followedAt?.millisecondsSinceEpoch ?? 0;
+      return right.compareTo(left);
+    });
+    final viewerFollowing = await _loadViewerFollowingIds(viewerId);
+    return entries
+        .map(
+          (entry) => ProfileFollowSnapshot(
+            profile: entry.profile,
+            isFollowedByViewer: viewerFollowing.contains(entry.profile.id),
+            followedAt: entry.followedAt,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<Set<String>> _loadViewerFollowingIds(String viewerId) async {
+    final snapshot = await _firestore
+        .collection(FirestoreProfileInteractionService._profilesCollection)
+        .doc(viewerId)
+        .collection('following')
+        .get();
+    return snapshot.docs.map((doc) => doc.id).toSet();
+  }
+
+  @override
   Future<Profile?> loadProfile(String profileId) async {
     if (profileId.isEmpty) {
       return null;
@@ -589,11 +657,8 @@ class _RelationshipWatcher {
     final docRef = profiles.doc(targetId);
     final collectionName =
         type == _RelationType.followers ? 'followers' : 'following';
-    _relationSub = docRef
-        .collection(collectionName)
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .listen(
+    _relationSub =
+        docRef.collection(collectionName).snapshots().listen(
       (snapshot) {
         unawaited(_rebuild(snapshot.docs));
       },
@@ -629,29 +694,19 @@ class _RelationshipWatcher {
         results.add(entry);
       }
     }
+    results.sort((a, b) {
+      final left = a.followedAt?.millisecondsSinceEpoch ?? 0;
+      final right = b.followedAt?.millisecondsSinceEpoch ?? 0;
+      return right.compareTo(left);
+    });
     _entries = results;
     _emitLatest();
   }
 
   Future<_RelationEntry?> _buildEntry(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
-    final data = doc.data();
-    Profile? profile;
-    final profileData = data['profile'];
-    if (profileData is Map<String, dynamic>) {
-      profile = Profile.fromMap(Map<String, dynamic>.from(profileData));
-    }
-    profile ??= await _loadProfile(_firestore, doc.id);
-    if (profile == null) {
-      return null;
-    }
-    final createdAt = data['createdAt'];
-    DateTime? followedAt;
-    if (createdAt is Timestamp) {
-      followedAt = createdAt.toDate();
-    }
-    return _RelationEntry(profile: profile, followedAt: followedAt);
+  ) {
+    return _buildRelationEntry(_firestore, doc);
   }
 
   void _emitLatest() {
@@ -696,6 +751,28 @@ class _RelationEntry {
 
   final Profile profile;
   final DateTime? followedAt;
+}
+
+Future<_RelationEntry?> _buildRelationEntry(
+  FirebaseFirestore firestore,
+  QueryDocumentSnapshot<Map<String, dynamic>> doc,
+) async {
+  final data = doc.data();
+  Profile? profile;
+  final profileData = data['profile'];
+  if (profileData is Map<String, dynamic>) {
+    profile = Profile.fromMap(Map<String, dynamic>.from(profileData));
+  }
+  profile ??= await _loadProfile(firestore, doc.id);
+  if (profile == null) {
+    return null;
+  }
+  final createdAt = data['createdAt'];
+  DateTime? followedAt;
+  if (createdAt is Timestamp) {
+    followedAt = createdAt.toDate();
+  }
+  return _RelationEntry(profile: profile, followedAt: followedAt);
 }
 
 class _LikeEntry {

@@ -214,6 +214,58 @@ class MockProfileInteractionService implements ProfileInteractionService {
   }
 
   @override
+  Future<List<ProfileFollowSnapshot>> loadFollowersOnce({
+    required String targetId,
+    required String viewerId,
+  }) async {
+    return _buildRelationSnapshots(
+      targetId: targetId,
+      viewerId: viewerId,
+      type: _MockRelationType.followers,
+    );
+  }
+
+  @override
+  Future<List<ProfileFollowSnapshot>> loadFollowingOnce({
+    required String targetId,
+    required String viewerId,
+  }) async {
+    return _buildRelationSnapshots(
+      targetId: targetId,
+      viewerId: viewerId,
+      type: _MockRelationType.following,
+    );
+  }
+
+  Future<List<ProfileFollowSnapshot>> _buildRelationSnapshots({
+    required String targetId,
+    required String viewerId,
+    required _MockRelationType type,
+  }) async {
+    final targetState = _getProfileState(targetId);
+    final viewerState = _getProfileState(viewerId);
+    final viewerFollowing = viewerState.following.keys.toSet();
+    final source = type == _MockRelationType.followers
+        ? targetState.followedBy.entries
+        : targetState.following.entries;
+    final sorted = source.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final snapshots = <ProfileFollowSnapshot>[];
+    for (final entry in sorted) {
+      final profileId = entry.key;
+      final otherState = _getProfileState(profileId);
+      final profile = _profileFromState(profileId, otherState);
+      snapshots.add(
+        ProfileFollowSnapshot(
+          profile: profile,
+          isFollowedByViewer: viewerFollowing.contains(profileId),
+          followedAt: entry.value,
+        ),
+      );
+    }
+    return snapshots;
+  }
+
+  @override
   Future<Profile?> loadProfile(String profileId) async {
     if (profileId.isEmpty) {
       return null;

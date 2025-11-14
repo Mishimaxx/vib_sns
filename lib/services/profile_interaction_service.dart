@@ -75,6 +75,16 @@ abstract class ProfileInteractionService {
     required bool follow,
   });
 
+  Future<List<ProfileFollowSnapshot>> loadFollowersOnce({
+    required String targetId,
+    required String viewerId,
+  });
+
+  Future<List<ProfileFollowSnapshot>> loadFollowingOnce({
+    required String targetId,
+    required String viewerId,
+  });
+
   Future<Profile?> loadProfile(String profileId);
 
   Future<void> dispose();

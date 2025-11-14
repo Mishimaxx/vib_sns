@@ -1004,6 +1004,7 @@ class _ProfileScreenState extends State<_ProfileScreen> {
     Profile profile,
     ProfileFollowSheetMode mode,
   ) {
+    final viewerId = context.read<ProfileController>().profile.id;
     final navigator = Navigator.of(context);
     showModalBottomSheet<void>(
       context: context,
@@ -1012,7 +1013,7 @@ class _ProfileScreenState extends State<_ProfileScreen> {
       builder: (sheetContext) {
         return ProfileFollowListSheet(
           targetId: profile.id,
-          viewerId: profile.id,
+          viewerId: viewerId,
           mode: mode,
           onProfileTap: (remoteProfile) {
             navigator.push(
