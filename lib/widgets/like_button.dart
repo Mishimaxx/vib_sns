@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/color_extensions.dart';
+
 enum LikeButtonVariant { hero, chip }
 
 class LikeButton extends StatefulWidget {

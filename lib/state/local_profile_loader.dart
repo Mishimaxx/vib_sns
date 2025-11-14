@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/profile.dart';
+import '../utils/color_extensions.dart';
 import '../services/firestore_streetpass_service.dart';
 
 class LocalProfileLoader {
@@ -26,11 +27,9 @@ class LocalProfileLoader {
     final displayName = prefs.getString(_displayNameKey) ?? '';
     final bio = prefs.getString(_bioKey) ?? '\u672a\u767b\u9332';
     final homeTown = prefs.getString(_homeTownKey) ?? '\u672a\u767b\u9332';
-    final favoriteGames =
-        (prefs.getStringList(_favoriteGamesKey) ?? const <String>[])
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList(growable: false);
+    final favoriteGames = Profile.sanitizeHashtags(
+      prefs.getStringList(_favoriteGamesKey) ?? const <String>[],
+    );
     final avatarColorValue =
         prefs.getInt(_avatarColorKey) ?? _randomAccentColorValue();
     final avatarImageBase64 = prefs.getString(_avatarImageKey);
@@ -124,14 +123,12 @@ class LocalProfileLoader {
       await writeString(_homeTownKey, homeTown);
     }
     if (favoriteGames != null) {
-      final sanitized = favoriteGames
-          .map((game) => game.trim())
-          .where((game) => game.isNotEmpty)
-          .toList(growable: false);
+      final sanitized = Profile.sanitizeHashtags(favoriteGames);
       if (sanitized.isEmpty) {
         await prefs.remove(_favoriteGamesKey);
       } else {
-        await prefs.setStringList(_favoriteGamesKey, sanitized);
+        await prefs.setStringList(
+            _favoriteGamesKey, List<String>.from(sanitized));
       }
     }
     if (avatarColor != null) {

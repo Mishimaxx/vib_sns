@@ -88,7 +88,7 @@ class _EncounterDetailBody extends StatelessWidget {
     final double? bleDistance = encounter.bleDistanceMeters;
     final bio = _displayOrPlaceholder(profile.bio);
     final homeTown = _displayOrPlaceholder(profile.homeTown);
-    final hobbies = _hobbiesOrPlaceholder(profile.favoriteGames);
+    final hashtags = _hashtagsOrPlaceholder(profile.favoriteGames);
     final encounterTime = _formattedDate(encounter.encounteredAt);
     final distanceSummary = _distanceSummary(gpsDistance, bleDistance);
     final message = encounter.message?.trim();
@@ -187,9 +187,9 @@ class _EncounterDetailBody extends StatelessWidget {
                       value: homeTown,
                     ),
                     ProfileInfoTile(
-                      icon: Icons.palette_outlined,
-                      title: '\u8da3\u5473',
-                      value: hobbies,
+                      icon: Icons.tag,
+                      title: '\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0',
+                      value: hashtags,
                     ),
                     if (message != null && message.isNotEmpty) ...[
                       const SizedBox(height: 20),
@@ -279,11 +279,11 @@ String _displayOrPlaceholder(String value) {
   return trimmed;
 }
 
-String _hobbiesOrPlaceholder(List<String> hobbies) {
-  if (hobbies.isEmpty) {
+String _hashtagsOrPlaceholder(List<String> hashtags) {
+  if (hashtags.isEmpty) {
     return '\u672a\u767b\u9332';
   }
-  return hobbies.join(', ');
+  return hashtags.join(' ');
 }
 
 String? _distanceSummary(double? gpsDistance, double? bleDistance) {

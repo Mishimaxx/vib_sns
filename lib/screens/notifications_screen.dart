@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/app_notification.dart';
 import '../state/notification_manager.dart';
+import '../utils/color_extensions.dart';
 import 'encounter_detail_screen.dart';
 import 'profile_view_screen.dart';
 

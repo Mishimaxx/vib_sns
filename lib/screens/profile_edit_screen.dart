@@ -26,7 +26,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _bioController;
   late final TextEditingController _homeTownController;
-  late final TextEditingController _hobbiesController;
+  late final TextEditingController _hashtagsController;
   bool _saving = false;
   String? _avatarImageBase64;
   Uint8List? _avatarImageBytes;
@@ -42,7 +42,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         TextEditingController(text: _initialValue(widget.profile.bio));
     _homeTownController =
         TextEditingController(text: _initialValue(widget.profile.homeTown));
-    _hobbiesController =
+    _hashtagsController =
         TextEditingController(text: widget.profile.favoriteGames.join('\n'));
     _avatarImageBase64 = widget.profile.avatarImageBase64;
     _avatarImageBytes = _decodeAvatar(widget.profile.avatarImageBase64);
@@ -59,7 +59,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _nameController.dispose();
     _bioController.dispose();
     _homeTownController.dispose();
-    _hobbiesController.dispose();
+    _hashtagsController.dispose();
     super.dispose();
   }
 
@@ -81,17 +81,39 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return value;
   }
 
-  List<String> _parseHobbies(String raw) {
+  List<String> _parseHashtags(String raw) {
     if (raw.trim().isEmpty) return const <String>[];
-    final parts = raw.split(RegExp(r'[\n,]'));
-    final cleaned = <String>[];
-    for (final part in parts) {
-      final value = part.trim();
-      if (value.isNotEmpty) {
-        cleaned.add(value);
+    return Profile.sanitizeHashtags(_splitHashtagInput(raw));
+  }
+
+  List<String> _splitHashtagInput(String raw) {
+    if (raw.trim().isEmpty) return const <String>[];
+    return raw
+        .split(RegExp(r'[,\n\s]+'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<String> _normalizedHashtagsForValidation(String raw) {
+    final normalized = <String>[];
+    final seen = <String>{};
+    for (final token in _splitHashtagInput(raw)) {
+      var value = token.trim();
+      if (value.isEmpty) continue;
+      value = value.replaceAll(RegExp(r'\s+'), '');
+      if (value.isEmpty) continue;
+      if (!value.startsWith('#')) {
+        value = '#$value';
+      }
+      if (value == '#') continue;
+      final key =
+          value.startsWith('#') ? value.substring(1).toLowerCase() : value.toLowerCase();
+      if (seen.add(key)) {
+        normalized.add(value);
       }
     }
-    return cleaned;
+    return normalized;
   }
 
   Future<void> _pickAvatar() async {
@@ -143,7 +165,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     final displayName = _nameController.text.trim();
     final bio = _bioController.text.trim();
     final homeTown = _homeTownController.text.trim();
-    final hobbies = _parseHobbies(_hobbiesController.text);
+    final hashtags = _parseHashtags(_hashtagsController.text);
 
     final profileController = context.read<ProfileController>();
     final encounterManager = context.read<EncounterManager>();
@@ -155,7 +177,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         displayName: displayName,
         bio: bio,
         homeTown: homeTown,
-        favoriteGames: hobbies,
+        favoriteGames: hashtags,
         avatarImageBase64: _avatarRemoved ? null : _avatarImageBase64,
         removeAvatarImage: _avatarRemoved,
       );
@@ -300,28 +322,28 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
-                  controller: _hobbiesController,
+                  controller: _hashtagsController,
                   decoration: InputDecoration(
-                    labelText: '\u8da3\u5473',
-                    hintText:
-                        '\u6539\u884c\u307e\u305f\u306f\u30ab\u30f3\u30de\u533a\u5207\u308a\u3067\u8a18\u5165',
+                    labelText: '\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0',
+                    hintText: '#\u30b2\u30fc\u30e0\u540d #\u30ab\u30d5\u30a7\u5de1\u308a #\u6620\u753b\u9451\u8cde',
                     helperText:
-                        '\u4f8b: \u30ab\u30d5\u30a7\u5de1\u308a / \u6620\u753b\u9451\u8cde / \u30dc\u30fc\u30c9\u30b2\u30fc\u30e0',
+                        '#\u304b\u3089\u59cb\u307e\u308b\u6700\u592710\u500b\u307e\u3067\u3092\u6539\u884c\u3084\u7a7a\u767d\u3001\u30ab\u30f3\u30de\u533a\u5207\u308a\u3067\u8a18\u5165',
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16)),
                   ),
                   maxLines: 5,
                   validator: (value) {
-                    final hobbiesList = _parseHobbies(value ?? '');
-                    if (hobbiesList.length > 8) {
-                      return '\u8da3\u5473\u306f8\u500b\u307e\u3067\u8a18\u5165\u3067\u304d\u307e\u3059';
+                    final normalized =
+                        _normalizedHashtagsForValidation(value ?? '');
+                    if (normalized.length > Profile.maxHashtagCount) {
+                      return '\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0\u306f${Profile.maxHashtagCount}\u500b\u307e\u3067\u8a18\u5165\u3067\u304d\u307e\u3059';
                     }
-                    final longest = hobbiesList.fold<int>(
+                    final longest = normalized.fold<int>(
                         0,
                         (prev, element) =>
                             element.length > prev ? element.length : prev);
-                    if (longest > 32) {
-                      return '\u5404\u9805\u76ee\u306f32\u6587\u5b57\u4ee5\u5185\u306b\u3057\u3066\u304f\u3060\u3055\u3044';
+                    if (longest > Profile.maxHashtagLength) {
+                      return '\u5404\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0\u306f${Profile.maxHashtagLength}\u6587\u5b57\u4ee5\u5185\u306b\u3057\u3066\u304f\u3060\u3055\u3044';
                     }
                     return null;
                   },

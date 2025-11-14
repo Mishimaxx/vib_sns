@@ -213,7 +213,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     final theme = Theme.of(context);
     final bio = _displayOrPlaceholder(_profile.bio);
     final homeTown = _displayOrPlaceholder(_profile.homeTown);
-    final hobbies = _hobbiesOrPlaceholder(_profile.favoriteGames);
+    final hashtags = _hashtagsOrPlaceholder(_profile.favoriteGames);
     final isSelf = widget.profileId == _viewerId;
 
     return Scaffold(
@@ -290,9 +290,9 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                             value: homeTown,
                           ),
                           ProfileInfoTile(
-                            icon: Icons.palette_outlined,
-                            title: '趣味',
-                            value: hobbies,
+                            icon: Icons.tag,
+                            title: 'ハッシュタグ',
+                            value: hashtags,
                           ),
                         ],
                       ),
@@ -368,9 +368,9 @@ String _displayOrPlaceholder(String value) {
   return trimmed;
 }
 
-String _hobbiesOrPlaceholder(List<String> hobbies) {
-  if (hobbies.isEmpty) {
+String _hashtagsOrPlaceholder(List<String> hashtags) {
+  if (hashtags.isEmpty) {
     return '未登録';
   }
-  return hobbies.join(', ');
+  return hashtags.join(' ');
 }

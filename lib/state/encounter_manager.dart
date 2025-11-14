@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:vibration/vibration.dart';
 
 import '../models/encounter.dart';
 import '../models/profile.dart';
@@ -41,9 +43,19 @@ class EncounterManager extends ChangeNotifier {
   final Map<String, Encounter> _encountersByRemoteId = {};
   final Map<String, _BeaconPresence> _presenceByBeaconId = {};
   final Map<String, DateTime> _lastNotificationAt = {};
+  final Map<String, DateTime> _lastVibrationAt = {};
+  final Map<String, DateTime> _lastHashtagMatchAt = {};
+  final Map<String, Set<String>> _remoteHashtagCache = {};
+  final Map<String, _BleDistanceWindow> _bleDistanceWindows = {};
 
   static const Duration _presenceTimeout = Duration(seconds: 45);
   static const Duration _reencounterCooldown = Duration(minutes: 15);
+  static const double _closeProximityRadiusMeters = 3;
+  static const double _farProximityRadiusMeters = 10;
+  static const double _bleVibrationBufferMeters = 1.5;
+  static const Duration _minProximityCooldown = Duration(seconds: 5);
+  static const Duration _maxProximityCooldown = Duration(seconds: 30);
+  static const Duration _hashtagMatchCooldown = Duration(minutes: 1);
   final Set<String> _targetBeaconIds = {};
   final Map<String, StreamSubscription<ProfileInteractionSnapshot>>
       _interactionSubscriptions = {};
@@ -128,6 +140,7 @@ class EncounterManager extends ChangeNotifier {
   }
 
   void _handleEncounter(StreetPassEncounterData data) {
+    debugPrint('[VIBE] encounter tags=${data.profile.favoriteGames}');
     final now = DateTime.now();
     final presence = _presenceByBeaconId.putIfAbsent(
       data.beaconId,
@@ -141,9 +154,13 @@ class EncounterManager extends ChangeNotifier {
       existing.gpsDistanceMeters = data.gpsDistanceMeters;
       existing.message = data.message ?? existing.message;
       existing.unread = true;
-      existing.profile.receivedLikes = data.profile.receivedLikes;
-      existing.profile.followersCount = data.profile.followersCount;
-      existing.profile.followingCount = data.profile.followingCount;
+      final previousProfile = existing.profile;
+      existing.profile = data.profile.copyWith(
+        following: previousProfile.following,
+        receivedLikes: data.profile.receivedLikes,
+        followersCount: data.profile.followersCount,
+        followingCount: data.profile.followingCount,
+      );
       if (data.latitude != null) {
         existing.latitude = data.latitude;
       }
@@ -167,6 +184,7 @@ class EncounterManager extends ChangeNotifier {
       _bleScanner?.updateTargetBeacons(_targetBeaconIds);
     }
     _ensureInteractionSubscription(data.remoteId);
+    _hydrateRemoteHashtags(data.remoteId, data.profile);
 
     final encounter = _encountersByRemoteId[data.remoteId];
     if (encounter != null) {
@@ -187,6 +205,20 @@ class EncounterManager extends ChangeNotifier {
         );
         _lastNotificationAt[data.remoteId] = now;
       }
+    }
+    final hasSharedHashtag = _hasSharedHashtag(data.remoteId, data.profile);
+    final triggeredProximityVibration = _maybeTriggerProximityVibration(
+      beaconId: data.beaconId,
+      remoteId: data.remoteId,
+      remoteProfile: data.profile,
+      gpsDistanceMeters: data.gpsDistanceMeters,
+      hasSharedHashtag: hasSharedHashtag,
+    );
+    if (!triggeredProximityVibration) {
+      _maybeTriggerHashtagMatchFeedback(
+        remoteId: data.remoteId,
+        hasSharedHashtag: hasSharedHashtag,
+      );
     }
     notifyListeners();
   }
@@ -240,6 +272,32 @@ class EncounterManager extends ChangeNotifier {
     _interactionSubscriptions[remoteId] = subscription;
   }
 
+  void _hydrateRemoteHashtags(String remoteId, Profile profile) {
+    final tags = _normalizedHashtagSet(profile.favoriteGames);
+    final alreadyCached = _remoteHashtagCache.containsKey(remoteId);
+    _remoteHashtagCache[remoteId] = tags;
+    if (tags.isEmpty && !alreadyCached) {
+      unawaited(_prefetchRemoteHashtags(remoteId));
+    }
+  }
+
+  Future<void> _prefetchRemoteHashtags(String remoteId) async {
+    final service = _interactionService;
+    if (service == null) {
+      return;
+    }
+    try {
+      final profile = await service.loadProfile(remoteId);
+      if (profile == null) {
+        return;
+      }
+      final tags = _normalizedHashtagSet(profile.favoriteGames);
+      _remoteHashtagCache[remoteId] = tags;
+    } catch (error) {
+      debugPrint('Failed to prefetch hashtags for $remoteId: $error');
+    }
+  }
+
   void _handleBleEncounter(BleProximityHit hit) {
     _markBeaconSeen(hit.beaconId);
     Encounter? matched;
@@ -252,9 +310,26 @@ class EncounterManager extends ChangeNotifier {
     if (matched == null) {
       return;
     }
-    matched.bleDistanceMeters = hit.distanceMeters;
+    final smoothedDistance = _recordBleDistance(hit.beaconId, hit.distanceMeters);
+    matched.bleDistanceMeters = smoothedDistance;
     matched.encounteredAt = DateTime.now();
     matched.unread = true;
+    debugPrint('[VIBE] ble tags=${matched.profile.favoriteGames}');
+    final hasSharedHashtag = _hasSharedHashtag(matched.profile.id, matched.profile);
+    final triggeredProximityVibration = _maybeTriggerProximityVibration(
+      beaconId: hit.beaconId,
+      remoteId: matched.profile.id,
+      remoteProfile: matched.profile,
+      bleDistanceMeters: smoothedDistance,
+      isBleHit: true,
+      hasSharedHashtag: hasSharedHashtag,
+    );
+    if (!triggeredProximityVibration) {
+      _maybeTriggerHashtagMatchFeedback(
+        remoteId: matched.profile.id,
+        hasSharedHashtag: hasSharedHashtag,
+      );
+    }
     notifyListeners();
   }
 
@@ -264,6 +339,146 @@ class EncounterManager extends ChangeNotifier {
       () => _BeaconPresence(),
     );
     presence.markSeen(_presenceTimeout);
+  }
+
+  double _recordBleDistance(String beaconId, double distance) {
+    final window = _bleDistanceWindows.putIfAbsent(
+      beaconId,
+      () => _BleDistanceWindow(),
+    );
+    return window.record(distance);
+  }
+
+  bool _maybeTriggerProximityVibration({
+    required String beaconId,
+    required String remoteId,
+    required Profile remoteProfile,
+    double? gpsDistanceMeters,
+    double? bleDistanceMeters,
+    bool isBleHit = false,
+    bool? hasSharedHashtag,
+  }) {
+    if (kIsWeb) {
+      return false;
+    }
+    final sharedHashtag =
+        hasSharedHashtag ?? _hasSharedHashtag(remoteId, remoteProfile);
+    if (!sharedHashtag) {
+      debugPrint('[VIBE] skip (no shared hashtag) remote=$remoteId');
+      return false;
+    }
+    final distance = _resolveProximityDistance(
+      gpsDistanceMeters: gpsDistanceMeters,
+      bleDistanceMeters: bleDistanceMeters,
+    );
+    debugPrint(
+        '[VIBE] shared=$sharedHashtag distance=$distance gps=$gpsDistanceMeters ble=$bleDistanceMeters isBle=$isBleHit');
+    final maxDistance = isBleHit
+        ? _closeProximityRadiusMeters + _bleVibrationBufferMeters
+        : _farProximityRadiusMeters;
+    if (distance == null || distance <= 0 || distance > maxDistance) {
+      debugPrint('[VIBE] skip (distance) distance=$distance max=$maxDistance');
+      return false;
+    }
+    final now = DateTime.now();
+    final last = _lastVibrationAt[beaconId];
+    final cooldown = _cooldownForDistance(distance);
+    if (last != null &&
+        now.difference(last) < cooldown) {
+      debugPrint(
+          '[VIBE] skip (cooldown) last=${now.difference(last).inSeconds}s threshold=${cooldown.inSeconds}s');
+      return false;
+    }
+    _lastVibrationAt[beaconId] = now;
+    debugPrint('[VIBE] trigger vibration');
+    unawaited(_triggerProximityHaptics());
+    unawaited(SystemSound.play(SystemSoundType.click));
+    return true;
+  }
+
+  void _maybeTriggerHashtagMatchFeedback({
+    required String remoteId,
+    required bool hasSharedHashtag,
+  }) {
+    if (kIsWeb || !hasSharedHashtag) {
+      return;
+    }
+    final now = DateTime.now();
+    final lastTriggered = _lastHashtagMatchAt[remoteId];
+    if (lastTriggered != null &&
+        now.difference(lastTriggered) < _hashtagMatchCooldown) {
+      debugPrint(
+          '[VIBE] skip hashtag vibration (cooldown) remote=$remoteId elapsed=${now.difference(lastTriggered).inSeconds}s');
+      return;
+    }
+    _lastHashtagMatchAt[remoteId] = now;
+    debugPrint('[VIBE] trigger hashtag vibration remote=$remoteId');
+    unawaited(HapticFeedback.selectionClick());
+  }
+
+  double? _resolveProximityDistance({
+    double? gpsDistanceMeters,
+    double? bleDistanceMeters,
+  }) {
+    if (bleDistanceMeters != null && bleDistanceMeters.isFinite) {
+      return bleDistanceMeters;
+    }
+    if (gpsDistanceMeters != null && gpsDistanceMeters.isFinite) {
+      return gpsDistanceMeters;
+    }
+    return null;
+  }
+
+  Duration _cooldownForDistance(double distance) {
+    if (distance <= _closeProximityRadiusMeters) {
+      return _minProximityCooldown;
+    }
+    if (distance >= _farProximityRadiusMeters) {
+      return _maxProximityCooldown;
+    }
+    final ratio = (distance - _closeProximityRadiusMeters) /
+        (_farProximityRadiusMeters - _closeProximityRadiusMeters);
+    final minMs = _minProximityCooldown.inMilliseconds;
+    final maxMs = _maxProximityCooldown.inMilliseconds;
+    final interpolated = minMs + ((maxMs - minMs) * ratio);
+    return Duration(milliseconds: interpolated.round());
+  }
+
+  bool _hasSharedHashtag(String remoteId, Profile remoteProfile) {
+    final localTags = _normalizedHashtagSet(_localProfile.favoriteGames);
+    if (localTags.isEmpty) {
+      return false;
+    }
+    var remoteTags = _remoteHashtagCache[remoteId];
+    if (remoteTags == null) {
+      remoteTags = _normalizedHashtagSet(remoteProfile.favoriteGames);
+      _remoteHashtagCache[remoteId] = remoteTags;
+      if (remoteTags.isEmpty) {
+        unawaited(_prefetchRemoteHashtags(remoteId));
+      }
+    }
+    if (remoteTags.isEmpty) {
+      return false;
+    }
+    for (final tag in localTags) {
+      if (remoteTags.contains(tag)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Set<String> _normalizedHashtagSet(List<String> tags) {
+    final normalized = <String>{};
+    for (final tag in tags) {
+      final trimmed = tag.trim();
+      if (trimmed.isEmpty) continue;
+      final canonical =
+          trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+      if (canonical.isEmpty) continue;
+      normalized.add(canonical.toLowerCase());
+    }
+    return normalized;
   }
 
   bool _shouldNotifyRepeat({
@@ -297,6 +512,32 @@ class EncounterManager extends ChangeNotifier {
     }
     _presenceByBeaconId.clear();
     _lastNotificationAt.clear();
+    _lastVibrationAt.clear();
+    _lastHashtagMatchAt.clear();
+    _remoteHashtagCache.clear();
+    for (final window in _bleDistanceWindows.values) {
+      window.clear();
+    }
+    _bleDistanceWindows.clear();
+  }
+
+  Future<void> _triggerProximityHaptics() async {
+    try {
+      final supportsCustom =
+          (await Vibration.hasCustomVibrationsSupport()) ?? false;
+      if (supportsCustom) {
+        await Vibration.vibrate(duration: 400, amplitude: 255);
+        return;
+      }
+      final hasVibrator = (await Vibration.hasVibrator()) ?? false;
+      if (hasVibrator) {
+        await Vibration.vibrate(duration: 350);
+        return;
+      }
+    } catch (error) {
+      debugPrint('Vibration plugin failed: $error');
+    }
+    unawaited(HapticFeedback.heavyImpact());
   }
 
   Future<void> _cancelInteractionSubscriptions() async {
@@ -523,4 +764,36 @@ class _BeaconPresence {
     _exitTimer?.cancel();
     _exitTimer = null;
   }
+}
+
+class _BleDistanceWindow {
+  static const Duration _window = Duration(seconds: 6);
+  final List<_BleDistanceSample> _samples = [];
+
+  double record(double distance) {
+    final now = DateTime.now();
+    _samples.add(_BleDistanceSample(distance: distance, recordedAt: now));
+    _samples.removeWhere(
+      (sample) => now.difference(sample.recordedAt) > _window,
+    );
+    var minDistance = distance;
+    for (final sample in _samples) {
+      if (sample.distance < minDistance) {
+        minDistance = sample.distance;
+      }
+    }
+    return minDistance;
+  }
+
+  void clear() => _samples.clear();
+}
+
+class _BleDistanceSample {
+  _BleDistanceSample({
+    required this.distance,
+    required this.recordedAt,
+  });
+
+  final double distance;
+  final DateTime recordedAt;
 }

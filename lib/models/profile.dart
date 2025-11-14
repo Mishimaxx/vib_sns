@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/color_extensions.dart';
+
 class Profile {
   Profile({
     required this.id,
@@ -7,14 +9,17 @@ class Profile {
     required this.displayName,
     required this.bio,
     required this.homeTown,
-    required this.favoriteGames,
+    required List<String> favoriteGames,
     required this.avatarColor,
     this.avatarImageBase64,
     this.following = false,
     this.receivedLikes = 0,
     this.followersCount = 0,
     this.followingCount = 0,
-  });
+  }) : favoriteGames = sanitizeHashtags(favoriteGames);
+
+  static const int maxHashtagCount = 10;
+  static const int maxHashtagLength = 32;
 
   final String id;
   final String beaconId;
@@ -59,7 +64,7 @@ class Profile {
       bio: bio ?? this.bio,
       homeTown: homeTown ?? this.homeTown,
       favoriteGames: favoriteGames != null
-          ? List<String>.from(favoriteGames)
+          ? sanitizeHashtags(favoriteGames)
           : List<String>.from(this.favoriteGames),
       avatarColor: avatarColor ?? this.avatarColor,
       avatarImageBase64: clearAvatarImage
@@ -114,5 +119,42 @@ class Profile {
     } catch (_) {
       return null;
     }
+  }
+  static List<String> sanitizeHashtags(Iterable<String> values) {
+    final sanitized = <String>[];
+    final seen = <String>{};
+    for (final raw in values) {
+      final normalized = normalizeHashtag(raw);
+      if (normalized == null) continue;
+      final key = _canonicalKey(normalized);
+      if (seen.contains(key)) continue;
+      sanitized.add(normalized);
+      seen.add(key);
+      if (sanitized.length >= maxHashtagCount) {
+        break;
+      }
+    }
+    return List<String>.unmodifiable(sanitized);
+  }
+
+  static String? normalizeHashtag(String? raw) {
+    if (raw == null) return null;
+    var value = raw.trim();
+    if (value.isEmpty) return null;
+    value = value.replaceAll(RegExp(r'\s+'), '');
+    if (value.isEmpty) return null;
+    if (!value.startsWith('#')) {
+      value = '#$value';
+    }
+    if (value == '#') return null;
+    if (value.length > maxHashtagLength) {
+      value = value.substring(0, maxHashtagLength);
+    }
+    return value;
+  }
+
+  static String _canonicalKey(String tag) {
+    final trimmed = tag.startsWith('#') ? tag.substring(1) : tag;
+    return trimmed.toLowerCase();
   }
 }

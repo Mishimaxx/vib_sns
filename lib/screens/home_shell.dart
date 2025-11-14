@@ -18,6 +18,7 @@ import '../state/timeline_manager.dart';
 import 'profile_edit_screen.dart';
 import '../models/profile.dart';
 import '../models/encounter.dart';
+import '../utils/color_extensions.dart';
 import '../models/timeline_post.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/profile_info_tile.dart';
@@ -821,8 +822,9 @@ class _EncounterImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = profile.avatarColor;
-    final details = profile.favoriteGames.isNotEmpty
-        ? profile.favoriteGames.first
+    final hashtags = profile.favoriteGames;
+    final details = hashtags.isNotEmpty
+        ? hashtags.take(2).join(' ')
         : profile.homeTown;
     return AspectRatio(
       aspectRatio: 4 / 5,
@@ -983,12 +985,13 @@ class _ProfileScreenState extends State<_ProfileScreen> {
         // clear local UI-visible stats and reset managers to a neutral state.
         debugPrint(
             'HomeShell._logout: server deletion failed or not attempted; keeping local identity to avoid creating extra profiles');
-        final currentLocal = controller.profile;
-        await manager.switchLocalProfile(currentLocal, skipSync: true);
-        await notificationManager.resetForProfile(currentLocal);
+        final clearedLocal =
+            await LocalProfileLoader.updateLocalProfile(favoriteGames: const []);
+        await manager.switchLocalProfile(clearedLocal, skipSync: true);
+        await notificationManager.resetForProfile(clearedLocal);
         controller.updateStats(
             followersCount: 0, followingCount: 0, receivedLikes: 0);
-        controller.updateProfile(currentLocal, needsSetup: true);
+        controller.updateProfile(clearedLocal, needsSetup: true);
       }
     } finally {
       if (mounted) {
@@ -1051,7 +1054,7 @@ class _ProfileScreenState extends State<_ProfileScreen> {
     final profile = context.watch<ProfileController>().profile;
     final bio = _displayOrPlaceholder(profile.bio);
     final homeTown = _displayOrPlaceholder(profile.homeTown);
-    final hobbies = _hobbiesOrPlaceholder(profile.favoriteGames);
+    final hashtags = _hashtagsOrPlaceholder(profile.favoriteGames);
     return Scaffold(
       appBar: AppBar(
         title: const Text('\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb'),
@@ -1141,9 +1144,9 @@ class _ProfileScreenState extends State<_ProfileScreen> {
                         value: homeTown,
                       ),
                       ProfileInfoTile(
-                        icon: Icons.palette_outlined,
-                        title: '\u8da3\u5473',
-                        value: hobbies,
+                        icon: Icons.tag,
+                        title: '\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0',
+                        value: hashtags,
                       ),
                     ],
                   ),
@@ -1177,9 +1180,9 @@ String _displayOrPlaceholder(String value) {
   return trimmed;
 }
 
-String _hobbiesOrPlaceholder(List<String> hobbies) {
-  if (hobbies.isEmpty) {
+String _hashtagsOrPlaceholder(List<String> hashtags) {
+  if (hashtags.isEmpty) {
     return '\u672a\u767b\u9332';
   }
-  return hobbies.join(', ');
+  return hashtags.join(' ');
 }

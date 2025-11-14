@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import '../models/emotion_post.dart';
 import '../state/emotion_map_manager.dart';
 import '../state/profile_controller.dart';
+import '../utils/color_extensions.dart';
 
 class EmotionMap extends StatefulWidget {
   const EmotionMap({super.key});
@@ -110,6 +111,18 @@ const List<_BotStaticSpot> _botStaticSpots = [
   _BotStaticSpot(id: 'edogawa', center: LatLng(35.7061, 139.8683), radiusMeters: 1300, count: 5, happyProbability: 0.85),
 ];
 
+const double _clusterZoomThreshold = 14.0;
+const int _clusterMinDenseCount = 10;
+const double _clusterMinCellSizeDegrees = 0.004;
+const double _clusterMaxCellSizeDegrees = 0.02;
+const List<Color> _clusterPalette = [
+  Color(0xFFFF7043),
+  Color(0xFFFFB300),
+  Color(0xFF42A5F5),
+  Color(0xFFAB47BC),
+  Color(0xFF26A69A),
+];
+
 class _EmotionMapState extends State<EmotionMap> {
   final MapController _mapController = MapController();
   final Random _random = Random(1337);
@@ -205,6 +218,9 @@ class _EmotionMapState extends State<EmotionMap> {
 
     final baseMarkers = <Marker>[];
     final overlayMarkers = <Marker>[];
+    final clusterMarkers = <Marker>[];
+    final showClusters =
+        !_isMapMoving && _currentZoom <= _clusterZoomThreshold;
 
     void addPostMarkers(List<EmotionMapPost> source, bool isBot) {
       for (final post in source) {
@@ -220,12 +236,30 @@ class _EmotionMapState extends State<EmotionMap> {
       }
     }
 
-    addPostMarkers(posts, false);
-    addPostMarkers(_botPosts, true);
+    if (showClusters) {
+      final clusterResult = _clusterPosts(posts, _botPosts);
+      for (final cluster in clusterResult.denseBuckets) {
+        clusterMarkers.add(_buildClusterMarker(cluster));
+      }
+      final remainderUserPosts = <EmotionMapPost>[];
+      final remainderBotPosts = <EmotionMapPost>[];
+      for (final entry in clusterResult.remainder) {
+        if (entry.isBot) {
+          remainderBotPosts.add(entry.post);
+        } else {
+          remainderUserPosts.add(entry.post);
+        }
+      }
+      addPostMarkers(remainderUserPosts, false);
+      addPostMarkers(remainderBotPosts, true);
+    } else {
+      addPostMarkers(posts, false);
+      addPostMarkers(_botPosts, true);
+    }
     if (userLocation != null) {
       baseMarkers.add(_buildUserMarker(userLocation));
     }
-    final markers = [...baseMarkers, ...overlayMarkers];
+    final markers = [...baseMarkers, ...overlayMarkers, ...clusterMarkers];
     final showMarkers = markers.isNotEmpty;
 
     if (_mapReady) {
@@ -658,6 +692,31 @@ class _EmotionMapState extends State<EmotionMap> {
     );
   }
 
+  Future<void> _showClusterDetails(_ClusterBucket cluster) async {
+    final myProfileId = context.read<ProfileController>().profile.id;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return _ClusterDetailSheet(
+          cluster: cluster,
+          myProfileId: myProfileId,
+          onZoomIn: () {
+            Navigator.of(context).pop();
+            _zoomIntoCluster(cluster.center);
+          },
+          onPostTap: (post, isBot) {
+            Navigator.of(context).pop();
+            _showPostDetails(
+              post,
+              canDelete: !isBot && post.profileId == myProfileId,
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -725,6 +784,180 @@ class _EmotionMapState extends State<EmotionMap> {
       });
     } else {
       _visibleBotMemoIds = nextIds;
+    }
+  }
+
+  _ClusterResult _clusterPosts(
+    List<EmotionMapPost> posts,
+    List<EmotionMapPost> botPosts,
+  ) {
+    if (posts.isEmpty && botPosts.isEmpty) {
+      return _ClusterResult.empty();
+    }
+    final allEntries = <_ClusterEntry>[
+      ...posts.map((post) => _ClusterEntry(post: post, isBot: false)),
+      ...botPosts.map((post) => _ClusterEntry(post: post, isBot: true)),
+    ];
+    final bucketSize = max(_clusterCellSizeForZoom(_currentZoom), 1e-6);
+    final buckets = <String, _ClusterBucket>{};
+    for (final entry in allEntries) {
+      final latBucket = (entry.post.latitude / bucketSize).floor();
+      final lngBucket = (entry.post.longitude / bucketSize).floor();
+      final key = '$latBucket:$lngBucket';
+      final bucket =
+          buckets.putIfAbsent(key, () => _ClusterBucket(key: key));
+      bucket.add(entry);
+    }
+    final denseBuckets = <_ClusterBucket>[];
+    final remainder = <_ClusterEntry>[];
+    for (final bucket in buckets.values) {
+      if (bucket.count >= _clusterMinDenseCount) {
+        denseBuckets.add(bucket);
+      } else {
+        remainder.addAll(bucket.entries);
+      }
+    }
+    return _ClusterResult(denseBuckets: denseBuckets, remainder: remainder);
+  }
+
+  double _clusterCellSizeForZoom(double zoom) {
+    const minZoom = 10.0;
+    final maxZoom = _clusterZoomThreshold;
+    if (maxZoom <= minZoom) {
+      return _clusterMinCellSizeDegrees;
+    }
+    final clampedZoom = zoom.clamp(minZoom, maxZoom);
+    final t = (clampedZoom - minZoom) / (maxZoom - minZoom);
+    return _clusterMaxCellSizeDegrees -
+        (_clusterMaxCellSizeDegrees - _clusterMinCellSizeDegrees) * t;
+  }
+
+  Marker _buildClusterMarker(_ClusterBucket cluster) {
+    final center = cluster.center;
+    final scale = _markerScaleForZoom(_currentZoom).clamp(0.7, 1.0);
+    final stampSize = 110.0 * scale;
+    final haloSize = stampSize * 1.25;
+    final labelHeight = 38.0 * scale;
+    final baseColor = _clusterColorFor(cluster);
+    final highlight = Color.lerp(baseColor, Colors.white, 0.35)!;
+    final displayLabel = _clusterLabelForCount(cluster.count);
+    return Marker(
+      point: center,
+      width: haloSize,
+      height: haloSize + labelHeight,
+      alignment: Alignment.bottomCenter,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _showClusterDetails(cluster),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: haloSize,
+                  height: haloSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        highlight.withValues(alpha: 0.45),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.55, 1],
+                    ),
+                  ),
+                ),
+                Container(
+                  width: stampSize,
+                  height: stampSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [highlight, baseColor],
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      width: 4 * scale.clamp(0.8, 1.2),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: baseColor.withValues(alpha: 0.35),
+                        blurRadius: 18 * scale,
+                        offset: Offset(0, 6 * scale),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.groups_2_rounded,
+                        color: Colors.white,
+                        size: 24 * scale,
+                      ),
+                      SizedBox(height: 4 * scale),
+                      Text(
+                        displayLabel,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 17 * scale,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      Text(
+                        'タップで詳細',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 10 * scale,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _zoomIntoCluster(LatLng target) {
+    final currentZoom = _mapController.camera.zoom;
+    final safeZoom =
+        currentZoom.isNaN ? _clusterZoomThreshold : currentZoom;
+    final targetZoom =
+        (safeZoom + 1.8).clamp(_clusterZoomThreshold + 0.8, 17.0);
+    _mapController.move(target, targetZoom);
+  }
+
+  Color _clusterColorFor(_ClusterBucket cluster) {
+    final index =
+        cluster.colorKey % _clusterPalette.length;
+    return _clusterPalette[index];
+  }
+
+  String _clusterLabelForCount(int count) {
+    if (count < 10) {
+      // 2-9: そのまま表示
+      return '$count+人';
+    } else if (count < 100) {
+      // 10-99: 10刻みで表示 (10+, 20+, 30+, ..., 90+)
+      final bucket = ((count + 9) ~/ 10) * 10;
+      return '$bucket+人';
+    } else if (count < 1000) {
+      // 100-999: 100刻みで表示 (100+, 200+, 300+, ..., 900+)
+      final bucket = ((count + 99) ~/ 100) * 100;
+      return '$bucket+人';
+    } else {
+      // 1000以上
+      return '1000+人';
     }
   }
 
@@ -933,6 +1166,52 @@ class _MemoBubbleLayout {
   final double outerWidth;
   final double innerWidth;
   final double height;
+}
+
+class _ClusterEntry {
+  _ClusterEntry({required this.post, required this.isBot});
+
+  final EmotionMapPost post;
+  final bool isBot;
+}
+
+class _ClusterBucket {
+  _ClusterBucket({required this.key});
+
+  final String key;
+  final List<_ClusterEntry> entries = [];
+  double _latSum = 0;
+  double _lngSum = 0;
+
+  void add(_ClusterEntry entry) {
+    entries.add(entry);
+    _latSum += entry.post.latitude;
+    _lngSum += entry.post.longitude;
+  }
+
+  int get count => entries.length;
+
+  LatLng get center {
+    if (entries.isEmpty) {
+      return _defaultCenter;
+    }
+    return LatLng(_latSum / count, _lngSum / count);
+  }
+
+  int get colorKey => key.hashCode & 0x7fffffff;
+}
+
+class _ClusterResult {
+  const _ClusterResult({
+    required this.denseBuckets,
+    required this.remainder,
+  });
+
+  factory _ClusterResult.empty() =>
+      const _ClusterResult(denseBuckets: [], remainder: []);
+
+  final List<_ClusterBucket> denseBuckets;
+  final List<_ClusterEntry> remainder;
 }
 
 class _BotStaticSpot {
@@ -1161,5 +1440,171 @@ class _EmotionPostDetailSheet extends StatelessWidget {
     final clock =
         '${twoDigits(local.hour)}:${twoDigits(local.minute)}:${twoDigits(local.second)}';
     return '$date $clock';
+  }
+}
+
+class _ClusterDetailSheet extends StatelessWidget {
+  const _ClusterDetailSheet({
+    required this.cluster,
+    required this.myProfileId,
+    required this.onZoomIn,
+    required this.onPostTap,
+  });
+
+  final _ClusterBucket cluster;
+  final String myProfileId;
+  final VoidCallback onZoomIn;
+  final void Function(EmotionMapPost post, bool isBot) onPostTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final posts = cluster.entries.map((e) => e.post).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    final happyCount = cluster.entries.where((e) => e.post.emotion == EmotionType.happy).length;
+    final sadCount = cluster.entries.where((e) => e.post.emotion == EmotionType.sad).length;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Icon(Icons.groups_2_rounded, size: 28, color: theme.colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Text(
+                          'この地域の気持ち',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _buildEmotionSummary(context, EmotionType.happy, happyCount),
+                        const SizedBox(width: 16),
+                        _buildEmotionSummary(context, EmotionType.sad, sadCount),
+                        const Spacer(),
+                        Text(
+                          '合計 ${cluster.count}人',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: onZoomIn,
+                        icon: const Icon(Icons.zoom_in),
+                        label: const Text('ズームインして個別に見る'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: posts.length,
+                  separatorBuilder: (context, index) => const Divider(height: 1, indent: 72),
+                  itemBuilder: (context, index) {
+                    final post = posts[index];
+                    final isBot = cluster.entries.firstWhere((e) => e.post.id == post.id).isBot;
+                    final emotion = post.emotion;
+                    final formattedTime = _formatRelativeTime(post.createdAt);
+
+                    return ListTile(
+                      onTap: () => onPostTap(post, isBot),
+                      leading: Container(
+                        decoration: BoxDecoration(
+                          color: emotion.color,
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(8),
+                        child: Text(
+                          emotion.emoji,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                      ),
+                      title: Text(
+                        post.displayMessage,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(formattedTime),
+                      trailing: const Icon(Icons.chevron_right),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmotionSummary(BuildContext context, EmotionType emotion, int count) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(emotion.emoji, style: const TextStyle(fontSize: 18)),
+        const SizedBox(width: 4),
+        Text(
+          '$count人',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatRelativeTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+
+    if (diff.inMinutes < 1) {
+      return 'たった今';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}分前';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}時間前';
+    } else if (diff.inDays < 7) {
+      return '${diff.inDays}日前';
+    } else {
+      final local = time.toLocal();
+      return '${local.month}/${local.day}';
+    }
   }
 }

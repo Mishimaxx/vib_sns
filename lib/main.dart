@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'utils/color_extensions.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import 'firebase_options.dart';
 import 'models/profile.dart';
 import 'screens/home_shell.dart';
@@ -62,6 +65,7 @@ Future<void> main() async {
   }
 
   final localProfile = await LocalProfileLoader.loadOrCreate();
+  await _ensureNotificationPermission();
 
   // If the user is authenticated, attach the auth UID to the profile document
   // so server-side Callable Functions can validate ownership. We write the
@@ -134,6 +138,17 @@ Future<void> main() async {
       emotionMapManager: emotionMapManager,
     ),
   );
+}
+
+Future<void> _ensureNotificationPermission() async {
+  if (kIsWeb) {
+    return;
+  }
+  final status = await Permission.notification.status;
+  if (status.isGranted || status.isLimited) {
+    return;
+  }
+  await Permission.notification.request();
 }
 
 class VibSnsApp extends StatelessWidget {

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/timeline_post.dart';
+import '../utils/color_extensions.dart';
 import 'profile_controller.dart';
 
 class TimelineManager extends ChangeNotifier {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/color_extensions.dart';
+
 class ProfileInfoTile extends StatelessWidget {
   const ProfileInfoTile({
     super.key,

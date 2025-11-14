@@ -1,3 +1,6 @@
+import org.gradle.api.Project
+import org.gradle.kotlin.dsl.closureOf
+
 pluginManagement {
     val flutterSdkPath = run {
         val properties = java.util.Properties()
@@ -26,3 +29,20 @@ plugins {
 }
 
 include(":app")
+
+// Some third-party plugins (for example flutter_blue_plus on older versions)
+// still expect the legacy `flutter` Gradle extension that the Groovy templates
+// used to create. When using the Kotlin DSL templates this extension does not
+// exist, so we provide equivalent values here before any project is evaluated.
+val legacyFlutterConfig = mapOf(
+    "compileSdkVersion" to 35,
+    "minSdkVersion" to 21,
+    "targetSdkVersion" to 35
+)
+gradle.beforeProject(
+    closureOf<Project> {
+        if (name != "app") {
+            extensions.extraProperties["flutter"] = legacyFlutterConfig
+        }
+    },
+)

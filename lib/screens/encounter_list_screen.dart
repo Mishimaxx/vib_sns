@@ -9,6 +9,7 @@ import '../widgets/emotion_map.dart';
 import '../widgets/like_button.dart';
 import '../widgets/profile_avatar.dart';
 import 'encounter_detail_screen.dart';
+import '../utils/color_extensions.dart';
 
 class EncounterListScreen extends StatefulWidget {
   const EncounterListScreen({super.key});

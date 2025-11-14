@@ -16,7 +16,7 @@ class Encounter {
   });
 
   final String id;
-  final Profile profile;
+  Profile profile;
   final String beaconId;
   DateTime encounteredAt;
   String? message;
