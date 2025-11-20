@@ -20,6 +20,7 @@ import '../models/profile.dart';
 import '../models/encounter.dart';
 import '../utils/color_extensions.dart';
 import '../models/timeline_post.dart';
+import '../widgets/app_logo.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/profile_info_tile.dart';
 import '../widgets/profile_stats_row.dart';
@@ -34,7 +35,7 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _currentIndex = 1;
+  int _currentIndex = 0;
   bool _autoStartAttempted = false;
 
   @override
@@ -47,7 +48,7 @@ class _HomeShellState extends State<HomeShell> {
 
   final List<Widget> _pages = const [
     _TimelineScreen(),
-    EncounterListScreen(),
+    SizedBox.shrink(),
     NotificationsScreen(),
     _ProfileScreen(),
   ];
@@ -67,27 +68,25 @@ class _HomeShellState extends State<HomeShell> {
           const NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
-            label: '\u30db\u30fc\u30e0',
+            label: '',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.radio),
-            selectedIcon: Icon(Icons.radio_button_checked),
-            label: '\u3059\u308c\u9055\u3044',
+            icon: Icon(Icons.add_circle_outline),
+            selectedIcon: Icon(Icons.add_circle),
+            label: '',
           ),
           NavigationDestination(
             icon: _buildNotificationIcon(unreadCount, selected: false),
             selectedIcon: _buildNotificationIcon(unreadCount, selected: true),
-            label: '\u901a\u77e5',
+            label: '',
           ),
           const NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
-            label: '\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb',
+            label: '',
           ),
         ],
-        onDestinationSelected: (index) {
-          setState(() => _currentIndex = index);
-        },
+        onDestinationSelected: _handleDestinationSelected,
       ),
     );
   }
@@ -103,6 +102,40 @@ class _HomeShellState extends State<HomeShell> {
     return Badge(
       label: Text(displayLabel),
       child: icon,
+    );
+  }
+
+  void _handleDestinationSelected(int index) {
+    if (index == 1) {
+      _openShareComposer();
+      return;
+    }
+    setState(() => _currentIndex = index);
+  }
+
+  Future<void> _openShareComposer() async {
+    final timelineManager = context.read<TimelineManager>();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final bottomPadding = MediaQuery.of(sheetContext).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomPadding),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: _TimelineComposer(timelineManager: timelineManager),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -145,7 +178,8 @@ class _TimelineScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(
-        title: const Text('🏠 \u30db\u30fc\u30e0'),
+        title: const AppLogo(),
+        centerTitle: true,
         backgroundColor: palette.background,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -172,9 +206,14 @@ class _TimelineScreen extends StatelessWidget {
                 _HighlightsSection(
                   palette: palette,
                   metrics: metrics,
+                  onEncounterTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const EncounterListScreen(),
+                      ),
+                    );
+                  },
                 ),
-                const SizedBox(height: 20),
-                _TimelineComposer(timelineManager: timelineManager),
                 const SizedBox(height: 24),
                 if (feedItems.isEmpty)
                   const _EmptyTimelineMessage()
@@ -291,10 +330,12 @@ class _HighlightsSection extends StatelessWidget {
   const _HighlightsSection({
     required this.palette,
     required this.metrics,
+    required this.onEncounterTap,
   });
 
   final _HomePalette palette;
   final _HomeMetrics metrics;
+  final VoidCallback onEncounterTap;
 
   @override
   Widget build(BuildContext context) {
@@ -304,6 +345,7 @@ class _HighlightsSection extends StatelessWidget {
         label: '\u3059\u308c\u9055\u3044',
         value: '${metrics.todaysEncounters}',
         color: Colors.white,
+        onTap: onEncounterTap,
       ),
       _HighlightMetric(
         icon: Icons.repeat,
@@ -383,17 +425,19 @@ class _HighlightMetric extends StatelessWidget {
     required this.label,
     required this.value,
     required this.color,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final String value;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
+    final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
@@ -419,6 +463,16 @@ class _HighlightMetric extends StatelessWidget {
           ),
         ),
       ],
+    );
+
+    if (onTap == null) {
+      return content;
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: content,
     );
   }
 }
@@ -1058,7 +1112,8 @@ class _ProfileScreenState extends State<_ProfileScreen> {
     final hashtags = _hashtagsOrPlaceholder(profile.favoriteGames);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb'),
+        title: const AppLogo(),
+        centerTitle: true,
         actions: [
           IconButton(
             tooltip: '\u7de8\u96c6',

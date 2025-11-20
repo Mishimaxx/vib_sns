@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/app_notification.dart';
 import '../state/notification_manager.dart';
 import '../utils/color_extensions.dart';
+import '../widgets/app_logo.dart';
 import 'encounter_detail_screen.dart';
 import 'profile_view_screen.dart';
 
@@ -18,7 +19,8 @@ class NotificationsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('\u901a\u77e5'),
+        title: const AppLogo(),
+        centerTitle: true,
         actions: [
           IconButton(
             tooltip: '\u5168\u4ef6\u3092\u65e2\u8aad\u306b\u3059\u308b',

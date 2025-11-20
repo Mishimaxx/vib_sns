@@ -5,11 +5,12 @@ import '../models/encounter.dart';
 import '../services/streetpass_service.dart';
 import '../state/encounter_manager.dart';
 import '../state/runtime_config.dart';
+import '../utils/color_extensions.dart';
+import '../widgets/app_logo.dart';
 import '../widgets/emotion_map.dart';
 import '../widgets/like_button.dart';
 import '../widgets/profile_avatar.dart';
 import 'encounter_detail_screen.dart';
-import '../utils/color_extensions.dart';
 
 class EncounterListScreen extends StatefulWidget {
   const EncounterListScreen({super.key});
@@ -82,7 +83,8 @@ class _EncounterListScreenState extends State<EncounterListScreen> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('\u3059\u308c\u9055\u3044\u30ed\u30b0'),
+          title: const AppLogo(),
+          centerTitle: true,
           actions: const [],
           bottom: const TabBar(
             tabs: [
